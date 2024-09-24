@@ -79,7 +79,7 @@ impl ExtractionConfig {
             (0, 1) => CompressedAngleBitSizes { phi_bit: 7, psi_bit: 5 },
             (1, 0) => CompressedAngleBitSizes { phi_bit: 6, psi_bit: 4 },
             (1, 1) => CompressedAngleBitSizes { phi_bit: 9, psi_bit: 7 },
-            _ => panic!("Invalid codebook or feedback type"),
+            _ => panic!("Invalid codebook or feedback type, {}", mimo_ctrl.codebook_info()),
         };
 
         let nr_index = mimo_ctrl.nr_index().value();

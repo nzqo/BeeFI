@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+pcap = "2.2"
 bfi_lib = { path = "../bfi_lib" }
 clap = { version = "4.5.17", features = ["derive"] }
