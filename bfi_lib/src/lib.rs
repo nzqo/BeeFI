@@ -28,7 +28,6 @@ pub fn extract_from_packet(packet: &Packet) -> SinglePacketBfiData {
 
     // Extract the timestamp from the pcap packet
     let timestamp = packet.header.ts;
-    println!("time, ");
     let timestamp_secs = timestamp.tv_sec as f64 + timestamp.tv_usec as f64 * 1e-6;
 
     let header_length = u16::from_le_bytes([packet.data[2], packet.data[3]]) as usize;

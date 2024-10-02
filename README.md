@@ -27,24 +27,22 @@ cargo run --package bfi_cli
 ```
 
 ## live capture
-HINT: make sure you have set NIC to monitor mode, somehow rust dont set it to monitor mode. 
 
+> make sure you have set NIC to monitor mode, somehow rust dont set it to monitor mode. 
 
-after building with `cargo build --package bfi_cli`
-you need to give the script permission to do network sniffing stuff. Therfore, got to target/debug (or target/release  if you build in release mode) and do:  
+Live capturing is supported via the `capture` command. However, you first need to set capture permissions for the application: 
  
 ```bash
-cd target/debug
-sudo setcap cap_net_raw+ep ./bfi_cli
+sudo setcap cap_net_raw+ep ./target/debug/bfi_cli  # or release
 ```
-then go back to main dir and now you can use 
+
+Afterwards, you can capture using:
+
 ```bash 
 cargo run --package bfi_cli capture -p
 ```
-to capture Acktion No ACK frames with rust. 
 
-NOTE: if you want to sniff any frame just remove the filter in the main.rs file. 
-
+This will capture frames of type `Action NO ACK`, and extract the BFI from them.
 
 ## Python Binding
 
