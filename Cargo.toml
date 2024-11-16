@@ -1,9 +1,5 @@
 [workspace]
-members = [
-	"bfi_lib",
-	"bfi_cli",
-	"bfi_py_binding",
-]
+members = ["lib", "beefi", "py_binding"]
 
 resolver = "2"
 
@@ -12,4 +8,3 @@ strip = true
 opt-level = "z"
 lto = true
 codegen-units = 1
-

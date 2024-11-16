@@ -5,9 +5,9 @@ feedback angles (BFAs) captured from channel sounding session.
 
 This workspace contains:
 
-- `bfi_lib` The library implementing the core functionality
-- `bfi_cli` A mini application to perform extraction from the command line
-- `bfi_py_binding` A python binding to directly extract information into numpy arrays
+- `lib` The library implementing the core functionality
+- `beefi` A mini application to perform extraction from the command line
+- `py_binding` A python binding to directly extract information into numpy arrays
 
 ## Installing dependencies
 
@@ -28,7 +28,7 @@ cargo run --package bfi_cli
 
 ## live capture
 
-> make sure you have set NIC to monitor mode, somehow rust dont set it to monitor mode. 
+> make sure you have set NIC to monitor mode before.
 
 Live capturing is supported via the `capture` command. However, you first need to set capture permissions for the application: 
  

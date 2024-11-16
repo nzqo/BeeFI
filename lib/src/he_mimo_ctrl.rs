@@ -7,7 +7,7 @@ use bilge::prelude::*;
  * Bandwidth enum corresponding to index order in HE MIMO Control field
  */
 #[bitsize(2)]
-#[derive(FromBits, Debug, Eq, PartialEq)]
+#[derive(FromBits, Debug, Eq, PartialEq, Copy, Clone)]
 pub enum Bandwidth {
     Bw20,
     Bw40,
@@ -19,13 +19,13 @@ pub enum Bandwidth {
  * Bandwidth conversion functions
  */
 impl Bandwidth {
-    pub fn to_mhz(self) -> u32 {
+    pub fn to_mhz(self) -> u16 {
         // Left shift is equal to taking power of 2
-        (2 << (self as u32)) * 10
+        (2 << (self as u16)) * 10
     }
 
     pub fn to_hz(self) -> u32 {
-        self.to_mhz() * 1_000_000
+        self.to_mhz() as u32 * 1_000_000
     }
 }
 

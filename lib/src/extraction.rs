@@ -95,23 +95,20 @@ impl ExtractionConfig {
 
         // NOTE: based on grouping bit the number of subcarrier change
         // for more details see IEEE 802.11ax Table 9-91a and Table 9-91e
-        let num_sub = match (
-            mimo_ctrl.grouping().value(),
-            mimo_ctrl.bandwidth().try_into(),
-        ) {
-            (0, Ok(Bandwidth::Bw20)) => 64,
-            (0, Ok(Bandwidth::Bw40)) => 122,
-            (0, Ok(Bandwidth::Bw80)) => 250,
-            (0, Ok(Bandwidth::Bw160)) => 500,
-            (1, Ok(Bandwidth::Bw20)) => 50,
-            (1, Ok(Bandwidth::Bw40)) => 32,
-            (1, Ok(Bandwidth::Bw80)) => 64,
-            (1, Ok(Bandwidth::Bw160)) => 160,
+        let num_sub = match (mimo_ctrl.grouping().value(), mimo_ctrl.bandwidth()) {
+            (0, Bandwidth::Bw20) => 64,
+            (0, Bandwidth::Bw40) => 122,
+            (0, Bandwidth::Bw80) => 250,
+            (0, Bandwidth::Bw160) => 500,
+            (1, Bandwidth::Bw20) => 50,
+            (1, Bandwidth::Bw40) => 32,
+            (1, Bandwidth::Bw80) => 64,
+            (1, Bandwidth::Bw160) => 160,
             _ => panic!("Invalid grouping or BW"),
         };
 
         ExtractionConfig {
-            bitfield_pattern: bitfield_pattern,
+            bitfield_pattern,
             num_subcarrier: num_sub,
         }
     }
@@ -120,6 +117,7 @@ impl ExtractionConfig {
 /**
  * Some sanity checks for the BFA bitfield extraction
  */
+#[cfg(debug_assertions)]
 fn sanity_check_extraction(
     bitfield_pattern: &[u8],
     num_chunks: usize,

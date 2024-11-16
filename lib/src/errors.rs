@@ -11,3 +11,11 @@ pub enum BfaExtractionError {
     #[error("Bitsize {given} exceeds maximum handled bitsize of {allowed}")]
     InvalidBitfieldSize { given: u8, allowed: u8 },
 }
+
+#[derive(Debug, Error)]
+pub enum PersistenceError {
+    #[error("Error in writing parquet file: {0}")]
+    Parquet(#[from] polars::error::PolarsError),
+    #[error("IO error in file persistence: {0}")]
+    Io(#[from] std::io::Error),
+}
