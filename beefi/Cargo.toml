@@ -4,7 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-beefi_lib = { path = "../lib" }
+beefi_lib = { path = "../lib", default-features = false }
 clap = { version = "4.5.17", features = ["derive"] }
 ctrlc = "3.4.5"
 simplelog = "0.12.2"
+
+
+[features]
+# Enable both `beefi_lib` features by default
+default = ["bfi_metadata", "parquet"]
+
+# Feature flags to enable `beefi_lib` features selectively
+bfi_metadata = ["beefi_lib/bfi_metadata"]
+parquet = ["beefi_lib/parquet"]

@@ -1,5 +1,5 @@
 [project]
-name = "beefi_py"
+name = "beefi"
 version = "0.1"
 description = "Python bindings for BeeFI"
 readme = "README.md"

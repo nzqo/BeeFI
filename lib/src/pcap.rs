@@ -2,7 +2,7 @@
 
 use crate::extraction::{extract_bfa, ExtractionConfig};
 use crate::he_mimo_ctrl::HeMimoControl;
-use crate::{BfiData, BfiMetadata};
+use crate::BfiData;
 use pcap::{Capture, Packet};
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ pub fn extract_from_packet(packet: &Packet) -> BfiData {
 
     BfiData {
         #[cfg(feature = "bfi_metadata")]
-        metadata: BfiMetadata::from_mimo_ctrl_header(&mimo_control),
+        metadata: crate::BfiMetadata::from_mimo_ctrl_header(&mimo_control),
         timestamp: timestamp_secs,
         token_number: u8::from(mimo_control.dialog_token_number()),
         bfa_angles,

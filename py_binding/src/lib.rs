@@ -17,9 +17,18 @@ pub struct PyBfiMeta {
 
 #[pyclass(get_all)]
 pub struct PyBfiData {
+    pub metadata: Py<PyBfiMeta>,
     pub timestamp: f64,
     pub token_number: u8,
     pub bfa_angles: Py<PyArray2<u16>>, // No lifetimes, allows direct access from Python
+}
+
+#[pyclass(get_all)]
+pub struct PyBfiBatch {
+    pub metadata: Py<PyList>,
+    pub timestamps: Py<PyArray1<f64>>,
+    pub token_numbers: Py<PyArray1<u8>>,
+    pub bfa_angles: Py<PyArray3<u16>>,
 }
 
 #[pyclass]
@@ -75,6 +84,7 @@ impl Bee {
                 let py_bfi_data = Py::new(
                     py,
                     PyBfiData {
+                        metadata: Py::new(py, PyBfiMeta::from(bfi_data.metadata))?,
                         timestamp: bfi_data.timestamp,
                         token_number: bfi_data.token_number,
                         bfa_angles,
@@ -112,15 +122,7 @@ fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
     #[allow(dead_code)]
     #[allow(clippy::type_complexity)] // Don't want to wrap and create owned struct
     #[pyfn(m)]
-    fn extract_from_pcap<'py>(
-        py: Python<'py>,
-        path: &str,
-    ) -> (
-        Bound<'py, PyArray1<f64>>,
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray3<u16>>,
-        Bound<'py, PyList>,
-    ) {
+    fn extract_from_pcap(py: Python<'_>, path: &str) -> PyResult<PyBfiBatch> {
         let data = beefi_lib::extract_from_pcap(path.into());
         let data_batch = split_bfi_data(data);
 
@@ -136,12 +138,14 @@ fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
             .collect::<Result<_, _>>()
             .unwrap();
 
-        (
-            PyArray1::from_vec_bound(py, data_batch.timestamps),
-            PyArray1::from_vec_bound(py, data_batch.token_numbers),
-            PyArray3::from_vec3_bound(py, &padded_bfa_angles).unwrap(),
-            PyList::new_bound(py, meta_list),
-        )
+        Ok(PyBfiBatch {
+            timestamps: PyArray1::from_vec_bound(py, data_batch.timestamps).unbind(),
+            token_numbers: PyArray1::from_vec_bound(py, data_batch.token_numbers).unbind(),
+            bfa_angles: PyArray3::from_vec3_bound(py, &padded_bfa_angles)
+                .unwrap()
+                .unbind(),
+            metadata: PyList::new_bound(py, meta_list).unbind(),
+        })
     }
 
     m.add_class::<Bee>()?;

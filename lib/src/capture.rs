@@ -12,7 +12,7 @@ use pcap::{Active, Capture, Offline, Savefile};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use crate::pcap::extract_from_packet;
 use crate::{BfiData, BfiFile, Writer};
@@ -23,10 +23,12 @@ const BATCH_SIZE: usize = 1000;
 ///
 /// Supports option to stream raw and/or processed packets to sinks for further handling.
 pub struct StreamBee {
-    cap: CaptureWrapper,
+    cap: Option<CaptureWrapper>,
     pollen_sink: Option<PollenSink>,
     honey_sink: Option<Sender<BfiData>>,
     running: Arc<AtomicBool>,
+    harvester: Option<JoinHandle<()>>,
+    file_writer: Option<JoinHandle<()>>,
 }
 
 /// Wrapper enum for `Capture<Active>` and `Capture<Offline>` to avoid generics in CaptureBee.
@@ -74,10 +76,12 @@ impl StreamBee {
 
     fn new(cap: CaptureWrapper) -> Self {
         Self {
-            cap,
+            cap: Some(cap),
             pollen_sink: None,
             honey_sink: None,
             running: Arc::new(AtomicBool::new(false)),
+            harvester: None,
+            file_writer: None,
         }
     }
 
@@ -103,7 +107,7 @@ impl StreamBee {
                     "Spawning background thread to write processed data to file {:?}",
                     file
                 );
-                thread::spawn(|| write_packets_to_file(rx, file));
+                self.file_writer = Some(thread::spawn(|| write_packets_to_file(rx, file)));
                 tx
             }
             HoneySink::Queue(queue) => queue,
@@ -143,45 +147,14 @@ impl StreamBee {
         log::info!("Starting harvesting of packets! εწз");
         self.running.store(true, Ordering::SeqCst);
 
-        // Loop while the running flag is true
-        while self.running.load(Ordering::SeqCst) {
-            // Capture the next packet first, holding the mutable borrow only for this step
-            let packet = {
-                match self.cap.next_packet() {
-                    Ok(packet) => packet,
-                    Err(e) => {
-                        log::error!("Pcap capture error encountered: {}. Stopping harvest.", e);
-                        break;
-                    }
-                }
-            };
-
-            if let Some(raw_sink) = &mut self.pollen_sink {
-                match raw_sink {
-                    PollenSink::File(savefile) => savefile.write(&packet),
-                }
-            }
-
-            if self.honey_sink.is_some() || print {
-                let data = extract_from_packet(&packet);
-
-                if print {
-                    println!(
-                        "Captured data:\n - timestamp: {}\n - token number {}\n - {:?}\n - {:?}",
-                        data.timestamp, data.token_number, data.metadata, data.bfa_angles
-                    );
-                }
-
-                if let Some(sink) = &self.honey_sink {
-                    if let Err(e) = sink.send(data) {
-                        log::error!(
-                            "Failed to forward data to sink; Stopping collection. Error: {}",
-                            e
-                        );
-                    }
-                }
-            }
-        }
+        // Start capture thread
+        let cap = self.cap.take().expect("Capture must exist for harvesting");
+        let running = self.running.clone();
+        let pollen_sink = self.pollen_sink.take();
+        let honey_sink = self.honey_sink.take();
+        self.harvester = Some(thread::spawn(move || {
+            harvest(cap, running, pollen_sink, honey_sink, print)
+        }));
 
         log::info!("Packet capture completed!\n");
     }
@@ -197,6 +170,17 @@ impl StreamBee {
         log::info!("Stopping harvesting of data; Resetting sinks as well.");
         self.running.store(false, Ordering::SeqCst);
 
+        if let Some(harvester) = self.harvester.take() {
+            if let Err(e) = harvester.join() {
+                log::error!("Couldn't join harvester thread. Error: {:?}", e);
+            }
+        }
+
+        if let Some(file_writer) = self.file_writer.take() {
+            if let Err(e) = file_writer.join() {
+                log::error!("Couldn't join file writer thread. Error: {:?}", e);
+            }
+        }
         // Ensure pcap file is flushed
         if let Some(PollenSink::File(file)) = &mut self.pollen_sink {
             if let Err(e) = file.flush() {
@@ -207,9 +191,64 @@ impl StreamBee {
         // Ensure the queues are destroyed so the file writer's are notified.
         self.honey_sink = None;
         self.pollen_sink = None;
+        self.harvester = None
     }
 }
 
+fn harvest(
+    mut cap: CaptureWrapper,
+    running: Arc<AtomicBool>,
+    mut pollen_sink: Option<PollenSink>,
+    honey_sink: Option<Sender<BfiData>>,
+    print: bool,
+) {
+    while running.load(Ordering::SeqCst) {
+        // Capture the next packet first, holding the mutable borrow only for this step
+        let packet = {
+            match cap.next_packet() {
+                Ok(packet) => packet,
+                Err(e) => {
+                    log::error!("Pcap capture error encountered: {}. Stopping harvest.", e);
+                    break;
+                }
+            }
+        };
+
+        if let Some(raw_sink) = &mut pollen_sink {
+            match raw_sink {
+                PollenSink::File(savefile) => savefile.write(&packet),
+            }
+        }
+
+        if honey_sink.is_some() || print {
+            let data = extract_from_packet(&packet);
+            let metadata_info = {
+                #[cfg(feature = "bfi_metadata")]
+                {
+                    format!("{:?}\n", data.metadata)
+                }
+
+                #[cfg(not(feature = "bfi_metadata"))]
+                {
+                    "Disabled (see build flags)".to_string()
+                }
+            };
+            println!(
+                "Captured data:\n - timestamp: {}\n - token number: {}\n{} - metadata {:?}",
+                data.timestamp, data.token_number, metadata_info, data.bfa_angles
+            );
+
+            if let Some(sink) = &honey_sink {
+                if let Err(e) = sink.send(data) {
+                    log::error!(
+                        "Failed to forward data to sink; Stopping collection. Error: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+}
 /// Writes captured packets to a file in batches, receiving data from a queue.
 ///
 /// # Parameters

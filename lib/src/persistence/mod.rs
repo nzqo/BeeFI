@@ -17,6 +17,7 @@ pub struct BfiFile {
     pub file_type: FileType,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum Writer {
     #[cfg(feature = "parquet")]
     Parquet(parquet::BatchWriter),

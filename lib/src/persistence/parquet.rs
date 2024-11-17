@@ -46,22 +46,23 @@ impl BatchWriter {
         );
 
         let timestamps_series =
-            Series::from_iter(data.iter().map(|d| d.timestamp)).with_name("timestamps");
+            Series::from_iter(data.iter().map(|d| d.timestamp)).with_name("timestamps".into());
 
-        let token_nums_series =
-            Series::from_iter(data.iter().map(|d| d.token_number as u32)).with_name("token_nums");
+        let token_nums_series = Series::from_iter(data.iter().map(|d| d.token_number as u32))
+            .with_name("token_nums".into());
 
         let bfa_angles_series = ListChunked::from_iter(data.iter().map(|d| {
             let mut inner_series = Vec::with_capacity(d.bfa_angles.len());
             for inner in &d.bfa_angles {
                 let converted_inner = inner.iter().map(|&e| e as u32).collect::<Vec<_>>();
-                inner_series.push(Series::new("", converted_inner));
+                inner_series.push(Series::new("".into(), converted_inner));
             }
-            Series::new("", inner_series)
+            Series::new("".into(), inner_series)
         }))
         .into_series()
-        .with_name("bfa_angles");
+        .with_name("bfa_angles".into());
 
+        #[allow(unused_mut)] // In case metadata feature is disabled
         let mut columns = vec![timestamps_series, token_nums_series, bfa_angles_series];
 
         #[cfg(feature = "bfi_metadata")]
@@ -80,11 +81,11 @@ impl BatchWriter {
                 feedback_type.push(d.metadata.feedback_type as u32);
             }
 
-            columns.push(Series::new("bandwidth", bandwidth));
-            columns.push(Series::new("nr_index", nr_index));
-            columns.push(Series::new("nc_index", nc_index));
-            columns.push(Series::new("codebook_info", codebook_info));
-            columns.push(Series::new("feedback_type", feedback_type));
+            columns.push(Series::new("bandwidth".into(), bandwidth));
+            columns.push(Series::new("nr_index".into(), nr_index));
+            columns.push(Series::new("nc_index".into(), nc_index));
+            columns.push(Series::new("codebook_info".into(), codebook_info));
+            columns.push(Series::new("feedback_type".into(), feedback_type));
         }
 
         let df = DataFrame::new(columns)?;
