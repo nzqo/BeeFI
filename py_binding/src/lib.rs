@@ -6,23 +6,35 @@ use crossbeam_channel::{bounded, Receiver};
 use numpy::{PyArray1, PyArray2, PyArray3};
 use pyo3::{prelude::*, types::PyList};
 
+/// BFI metadata
 #[pyclass(get_all)]
 pub struct PyBfiMeta {
+    /// Channel bandwidth
     pub bandwidth: u16,
+    /// Index of the receive antennas used in the sounding procedure
     pub nr_index: u8,
+    /// Index of columns (streams) used in the sounding procedure
     pub nc_index: u8,
+    /// Codebook size
     pub codebook_info: u8,
+    /// Feedback type (SU/MU/CQI)
     pub feedback_type: u8,
 }
 
+/// BFI data extracted from a single packet
 #[pyclass(get_all)]
 pub struct PyBfiData {
+    /// Metadata of the extracted BFI data
     pub metadata: Py<PyBfiMeta>,
+    /// Timestamp of the associated pcap capture
     pub timestamp: f64,
+    /// Token number to identify the NDP packet used in the procedure
     pub token_number: u8,
-    pub bfa_angles: Py<PyArray2<u16>>, // No lifetimes, allows direct access from Python
+    /// Extracted BFA angles from the compressed beamforming feedback information
+    pub bfa_angles: Py<PyArray2<u16>>,
 }
 
+/// Batch of BFI data
 #[pyclass(get_all)]
 pub struct PyBfiBatch {
     pub metadata: Py<PyList>,
@@ -31,21 +43,42 @@ pub struct PyBfiBatch {
     pub bfa_angles: Py<PyArray3<u16>>,
 }
 
+/// Capture bee
+///
+/// A little worker to read and process packets in a streaming fashion.
 #[pyclass]
 pub struct Bee {
     bee: StreamBee,              // Internal CaptureBee instance
     receiver: Receiver<BfiData>, // Receiver for BfiData messages from CaptureBee
 }
 
+/// Specifies the source of packet data
 #[pyclass]
 #[derive(Debug, Clone)]
 pub enum DataSource {
-    Live(String),
-    File(String),
+    /// Get packets live from an interface
+    Live {
+        /// Name of the network interface to capture packets on
+        interface: String,
+    },
+    /// Get packets from an offline pcap file
+    File {
+        /// Path to the pcap file on disk.
+        file_path: String,
+    },
 }
 
 #[pymethods]
 impl Bee {
+    /// Create a new streaming Bee
+    ///
+    /// A streaming bee is used to read packets from a pcap source, either an
+    /// interface of a captured pcap file. Packets are processed to extract
+    /// the BFI, which is exposed via a polling API.
+    ///
+    /// # Arguments
+    /// * `source` - The pcap source to read packets from
+    /// * `queue_size` - Size of internal queue to buffer collected data
     #[new]
     #[pyo3(signature = (source, queue_size=1000))]
     pub fn new(source: DataSource, queue_size: Option<usize>) -> PyResult<Self> {
@@ -55,11 +88,11 @@ impl Bee {
 
         // Initialize CaptureBee based on the capture source
         let mut bee = match source {
-            DataSource::File(file) => {
-                let cap = create_offline_capture(file.into());
+            DataSource::File { file_path } => {
+                let cap = create_offline_capture(file_path.into());
                 StreamBee::from_file_capture(cap)
             }
-            DataSource::Live(interface) => {
+            DataSource::Live { interface } => {
                 let cap = create_live_capture(&interface);
                 StreamBee::from_live_capture(cap)
             }
@@ -72,7 +105,15 @@ impl Bee {
         Ok(Bee { bee, receiver })
     }
 
-    /// Polls the queue for new BfiData and returns it as a `PyBfiData` if available.
+    /// Polls the queue for new BfiData and returns it if available, else None.
+    ///
+    /// This function is nonblocking and will immediately return None if no data
+    /// is available.
+    ///
+    /// Note that if the internal queue is full, the writer thread collecting and
+    /// processing data is blocked. If not polled sufficiently often, the writer
+    /// will be dropping messages. Callers must make sure to poll frequently
+    /// enough.
     pub fn poll(&self, py: Python) -> PyResult<Option<Py<PyBfiData>>> {
         match self.receiver.try_recv() {
             Ok(bfi_data) => {
@@ -98,6 +139,10 @@ impl Bee {
     }
 
     /// Stops the capture process
+    ///
+    /// This will exit all background threads and wrap up file usage.
+    /// Note that this is alternatively also done on destruction, but
+    /// doing it manually is just cleaner.
     pub fn stop(&mut self) {
         self.bee.stop();
     }
@@ -105,19 +150,21 @@ impl Bee {
 
 impl Drop for Bee {
     fn drop(&mut self) {
-        self.stop()
+        self.bee.stop()
     }
 }
 
 #[pymodule]
 fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
     /**
-     * Extract data from a pcap file
+     * Extract all data from a pcap file in a single batch.
      *
-     * \param path: Path to pcap file
+     * Since the data is returned as a single batch, this function might pad
+     * the BFA angles in case different dimensions are founds to homogenize
+     * the data.
      *
-     * \returns A tuple of extracted values, each a numpy array
-     *          with length equal to the number of packets.
+     * # Parameters
+     * * `path` - Path to pcap file to extract data from
      */
     #[allow(dead_code)]
     #[allow(clippy::type_complexity)] // Don't want to wrap and create owned struct

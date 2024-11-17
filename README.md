@@ -110,12 +110,13 @@ batch = beefi.extract_from_pcap("file.pcap")
 # see dir(batch) for extracted members
 ```
 
-Live captures are also supported via the binding:
+Live captures are also supported. Note however that the interface must
+be set into monitor mode before running this.
 
 ```python
 import beefi
 
-source = beefi.DataSource.Live("wlp1s0")
+source = beefi.DataSource.Live(interface="wlp1s0")
 bee = beefi.Bee(source)
 bee.start()
 

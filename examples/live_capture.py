@@ -1,7 +1,7 @@
 import beefi
 import time
 
-source = beefi.DataSource.Live("wlp1s0")
+source = beefi.DataSource.Live(interface="wlp1s0")
 bee = beefi.Bee(source)
 bee.start()
 

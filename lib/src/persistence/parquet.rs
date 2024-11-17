@@ -16,12 +16,14 @@ const NUM_COLUMNS: usize = 8; // 3 base fields + 5 metadata fields
 #[cfg(not(feature = "bfi_metadata"))]
 const NUM_COLUMNS: usize = 3; // Only 3 base fields
 
+/// A batch writer to write batches of BFI data to a parquet file
 pub struct BatchWriter {
     file: PathBuf,
     writer: polars::io::parquet::write::BatchedWriter<File>,
 }
 
 impl BatchWriter {
+    /// Create a new batch writer
     pub fn new(file_path: PathBuf) -> Result<Self, PersistenceError> {
         let file = std::fs::File::create(&file_path)?;
         let schema = create_bfi_schema();
@@ -34,10 +36,13 @@ impl BatchWriter {
         })
     }
 
+    /// Finalize the writer, i.e. flush buffers, ensure all contents are
+    /// written to file, and append the parquet footer.
     pub fn finalize(&mut self) -> Result<u64, PersistenceError> {
         self.writer.finish().map_err(PersistenceError::Parquet)
     }
 
+    /// Add a batch of data to the writer.
     pub fn add_batch(&mut self, data: &[BfiData]) -> Result<(), PersistenceError> {
         log::trace!(
             "Saving {} data points to parquet file {}",
@@ -99,6 +104,7 @@ impl BatchWriter {
     }
 }
 
+/// Get the dataframe schema of the BFI data.
 fn create_bfi_schema() -> Schema {
     // Initialize an empty Schema with a predefined capacity (optional)
     let mut schema = Schema::with_capacity(NUM_COLUMNS);

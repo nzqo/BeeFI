@@ -17,6 +17,11 @@ use std::thread::{self, JoinHandle};
 use crate::pcap::extract_from_packet;
 use crate::{BfiData, BfiFile, Writer};
 
+/// Size of batches to write.
+///
+/// This is used in the writer background thread when doing live captures.
+/// Specifically, once this critical size is reached, a batch is considered
+/// sufficiently big to be commited to the writer, i.e. written to the file.
 const BATCH_SIZE: usize = 1000;
 
 /// Manages packet capture and BFI processing from a `Capture object`.
@@ -31,7 +36,7 @@ pub struct StreamBee {
     file_writer: Option<JoinHandle<()>>,
 }
 
-/// Wrapper enum for `Capture<Active>` and `Capture<Offline>` to avoid generics in CaptureBee.
+/// Wrapper enum for pcap `Capture` types to avoid generics in StreamBee.
 enum CaptureWrapper {
     Live(Capture<Active>),
     File(Capture<Offline>),
@@ -91,7 +96,7 @@ impl StreamBee {
     /// - `HoneySink::Queue`: Packets are extracted and sent to an in-process queue for real-time handling.
     ///
     /// # Parameters
-    /// - `sink`: The `Sink` to stream to
+    /// - `sink`: The sink to stream the processed BFI data to.
     pub fn subscribe_for_honey(&mut self, sink: HoneySink) {
         if self.honey_sink.is_some() {
             panic!("Cant set two processed data sinks (currently)");
@@ -195,6 +200,17 @@ impl StreamBee {
     }
 }
 
+/// Function to constantly read and process packets
+///
+/// This function reads packets from the pcap Capture and, if relevant, extracts
+/// the BFI and prints/forwards it.
+///
+/// # Arguments
+/// * `cap` - Capture to read packets from
+/// * `running` - A shared flag to signalize harvesting to stop
+/// * `pollen_sink` - Optional sink for raw packets
+/// * `honey_sink` - Optional sink for extracted BFI data
+/// * `print` - Flag whether to print extracted BFI data to `stdout`.
 fn harvest(
     mut cap: CaptureWrapper,
     running: Arc<AtomicBool>,
@@ -249,6 +265,7 @@ fn harvest(
         }
     }
 }
+
 /// Writes captured packets to a file in batches, receiving data from a queue.
 ///
 /// # Parameters
@@ -282,6 +299,9 @@ fn write_packets_to_file(rx: Receiver<BfiData>, out_file: BfiFile) {
 }
 
 /// Creates a live capture to read packets from a specified network interface.
+///
+/// # Parameters
+/// * `interface` - Network interface to capture packets on.
 pub fn create_live_capture(interface: &str) -> Capture<Active> {
     log::info!("Creating live capture on interface: {}", interface);
     let devices = pcap::Device::list().unwrap_or_else(|e| {
@@ -300,6 +320,9 @@ pub fn create_live_capture(interface: &str) -> Capture<Active> {
 }
 
 /// Creates an offline capture to read packets from a pcap file.
+///
+/// # Arguments
+/// * `pcap_file` - Path to pcap file to read packets from
 pub fn create_offline_capture(pcap_file: PathBuf) -> Capture<Offline> {
     log::info!(
         "Creating offline pcap capture from file: {}",
