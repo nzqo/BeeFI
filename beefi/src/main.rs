@@ -10,6 +10,8 @@ use std::sync::{
     Arc,
 };
 
+mod monitor_mode;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
@@ -25,6 +27,9 @@ struct Cli {
 enum Commands {
     /// Capture data from an interface or process an existing pcap file
     Capture(CaptureArgs),
+
+    /// Put interface into monitor mode. Must be executed as sudo.
+    MonitorMode(MonitorArgs),
 }
 
 #[derive(Parser)]
@@ -55,6 +60,15 @@ struct CaptureArgs {
     print: bool,
 }
 
+#[derive(Parser)]
+struct MonitorArgs {
+    #[arg(long)]
+    interface: String,
+
+    #[arg(long, default_value = "1")]
+    channel: u8,
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -67,11 +81,14 @@ fn main() {
     .expect("Failed to initialize logger");
 
     match cli.command {
-        Commands::Capture(args) => dispatch_command(args),
+        Commands::Capture(args) => capture(args),
+        Commands::MonitorMode(MonitorArgs { interface, channel }) => {
+            monitor_mode::setup_monitor_mode(&interface, channel).unwrap()
+        }
     }
 }
 
-fn dispatch_command(args: CaptureArgs) {
+fn capture(args: CaptureArgs) {
     if args.interface.is_some() {
         run_capture(args);
     } else {
