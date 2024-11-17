@@ -7,3 +7,4 @@ edition = "2021"
 beefi_lib = { path = "../lib" }
 clap = { version = "4.5.17", features = ["derive"] }
 ctrlc = "3.4.5"
+simplelog = "0.12.2"

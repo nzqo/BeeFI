@@ -1,4 +1,10 @@
-# BfiExtract
+<div align="center">
+  <img src="assets/logo.png" alt="Project Logo" width="250">
+
+# BeeFI
+</div>
+
+## Overview
 
 A small library to extract information out of the compressed beamforming
 feedback angles (BFAs) captured from channel sounding session.

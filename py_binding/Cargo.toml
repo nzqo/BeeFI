@@ -6,8 +6,12 @@ edition = "2021"
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module"] }
 numpy = "0.22"
-beefi_lib = { path = "../lib" }
 crossbeam-channel = "0.5.13"
+
+[dependencies.beefi_lib]
+path = "../lib"
+default-features = false
+features = ["bfi_metadata"]
 
 [lib]
 name = "beefi"

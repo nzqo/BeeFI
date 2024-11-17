@@ -1,23 +1,21 @@
-/** ------------------------------------------------------------
- * BFA extraction from bytestream payload
- * ------------------------------------------------------------- */
+//! Extraction of BFA angles from WiFi packet bytestream payloads.
+//!
+//! At the end of a beamforming sensing procedure, the feedback matrix is sent
+//! unencrypted but compressed in a WiFi packet. In this module, we handle the
+//! decompression to obtain the original BFA angles, which parametrize the BFI.
 use crate::errors::BfaExtractionError;
 use crate::he_mimo_ctrl::Bandwidth;
 use crate::he_mimo_ctrl::HeMimoControl;
 
-/**
- * Extraction config contains all required parameters to extract the
- * original Phi/Psi angles from the compressed feedback information.
- */
+/// Config containing all required parameters to extract the original Phi
+/// and Psi angles from the compressed beamforming feedback information.
 #[rustfmt::skip]
 pub struct ExtractionConfig {
 	pub bitfield_pattern : Vec<u8>, // Length of bitfields per subcarrier-chunk
 	pub num_subcarrier   : usize,   // Number of subcarriers
 }
 
-/**
- * Compressed Feedback contains two types of angles
- */
+/// Compressed Feedback contains two types of angles
 enum Angles {
     Phi,
     Psi,
@@ -25,19 +23,20 @@ enum Angles {
 
 use Angles::{Phi, Psi};
 
-/**
- * Depending on the HE MIMO Control configuration, every angle is encoded
- * with a different number of bits
- */
+/// Bit-sizes of the individual angles in the compression
+///
+/// Phi and Psi are encoded in a variable number of bits, depending on the
+/// HE MIMO Control configuration. This struct contains these bit sizes.
 struct CompressedAngleBitSizes {
     phi_bit: u8,
     psi_bit: u8,
 }
 
-/**
- * The configuration also determines the amount of angles and in which order
- * they appear in the bytestream. This array lists these orders.
- */
+/// Possible patterns of Phi and Psi angles
+/// 
+/// For different configurations, the exact parametrization differs, requiring
+/// different numbers of Phi and Psi angles. This array lists all the patterns
+/// of Phi/Psi that may occur.
 #[rustfmt::skip]
 const ANGLE_PATTERNS: &[&[Angles]] = &[                            // (nr_index, nc_index):
     &[Phi, Psi],                                                   // (1, 0) | (1, 2)
@@ -49,9 +48,11 @@ const ANGLE_PATTERNS: &[&[Angles]] = &[                            // (nr_index,
 ];
 
 impl ExtractionConfig {
-    /**
-     * Get pattern in which angles appear in the compressed bitstream
-     */
+    /// Find the Phi/Psi angle pattern from a configuration.
+    ///
+    /// # Parameters
+    /// * `nr_index` - Index for number of receive chains
+    /// * `nc_index` - Index for number of columns (spatial streams)
     fn get_pattern(nr_index: u8, nc_index: u8) -> &'static [Angles] {
         match (nr_index, nc_index) {
             (1, 0) | (1, 2) => ANGLE_PATTERNS[0],
@@ -64,11 +65,12 @@ impl ExtractionConfig {
         }
     }
 
-    /**
-     * Get an extraction configuration from the HeMimoControl header specification
-     * The extraction configuration specifies how to extract the compressed angles
-     * from the payload
-     */
+    /// Get an extraction configuration from the HeMimoControl header specification
+    /// The extraction configuration specifies how to extract the compressed angles
+    /// from the payload.
+    ///
+    /// # Parameters
+    /// * `mimo_ctrl` - The MIMO control header
     pub fn from_he_mimo_ctrl(mimo_ctrl: &HeMimoControl) -> Self {
         #[rustfmt::skip]
         let phi_psi = match (
@@ -114,9 +116,7 @@ impl ExtractionConfig {
     }
 }
 
-/**
- * Some sanity checks for the BFA bitfield extraction
- */
+/// Some sanity checks for the BFA bitfield extraction
 #[cfg(debug_assertions)]
 fn sanity_check_extraction(
     bitfield_pattern: &[u8],
@@ -140,7 +140,7 @@ fn sanity_check_extraction(
         });
     }
 
-    // See below in extract_bitfields for an explanation.
+    // See `extract_bitfields` for an explanation of this part
     let max_allowed_bitsize = 9;
     if bitfield_pattern.iter().any(|&x| x > max_allowed_bitsize) {
         return Err(BfaExtractionError::InvalidBitfieldSize {
@@ -152,24 +152,24 @@ fn sanity_check_extraction(
     Ok(())
 }
 
-/**
- * Extract bitfields from a pattern description
- *
- * ## Warning
- *
- * This function assumes that bfa_payload is at least of size 2.
- * This requirement is not tested, so it will panic if violated.
- *
- * ## Description
- *
- * This function runs through a stream of bytes and extracts bitfields.
- * To extract bits from LSB, we pre-shift new bytes' bitpattern to the
- * front and simply mask out the correct bits to extract.
- *
- * Also assumes that bitfield_pattern never contains a value greater
- * than 16.
- *
- */
+/// Extract bitfields from a pattern description
+///
+/// This function runs through a stream of bytes and extracts bitfields.
+/// To extract bits from LSB, we pre-shift new bytes' bitpattern to the
+/// front and simply mask out the correct bits to extract.
+///
+/// Also assumes that bitfield_pattern never contains a value greater
+/// than 16.
+///
+/// # Warning
+///
+/// This function assumes that bfa_payload is at least of size 2.
+/// This requirement is not tested, so it will panic if violated.
+///
+/// # Parameters
+/// * `byte_stream` - The bytestream (packet payload containing compressed BFI)
+/// * `bitfield_pattern` - The Phi/Psi angle pattern present
+/// * `num_chunks` - Number of BFI chunks (i.e. number of subcarriers)
 fn extract_bitfields(
     byte_stream: &[u8],
     bitfield_pattern: Vec<u8>,
@@ -228,9 +228,11 @@ fn extract_bitfields(
     Ok(result)
 }
 
-/**
- * Extract BFA from payload using the corresponding extraction config
- */
+/// Extract BFA from payload using the corresponding extraction config
+///
+/// # Parameters
+/// * `bfa_payload` - The bytestream (packet payload containing compressed BFI)
+/// * `extraction_config` - Configuration for the extraction acquired from the MIMO control configuration
 pub fn extract_bfa(
     bfa_payload: &[u8],
     extraction_config: ExtractionConfig,
@@ -439,15 +441,12 @@ mod tests {
         // 2 chunks, each of size 14 bit -> exceeds payload of 16 bits
 
         let result = extract_bitfields(byte_stream, bitfield_pattern, num_chunks);
-        if let Err(BfaExtractionError::InsufficientBitsize {
-            required,
-            available,
-        }) = result
-        {
-            assert_eq!(required, 28);
-            assert_eq!(available, 16);
-        } else {
-            assert!(false, "Expected InsufficientBitsize error");
-        }
+        assert!(matches!(
+            result,
+            Err(BfaExtractionError::InsufficientBitsize {
+                required: 28,
+                available: 16
+            })
+        ));
     }
 }

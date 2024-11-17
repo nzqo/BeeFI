@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//! Some pcap handling helpers
 
 use crate::extraction::{extract_bfa, ExtractionConfig};
 use crate::he_mimo_ctrl::HeMimoControl;
@@ -6,9 +6,7 @@ use crate::{BfiData, BfiMetadata};
 use pcap::{Capture, Packet};
 use std::path::PathBuf;
 
-/**
- * Extract data from a single packet
- */
+/// Extract BFI data from a single WiFi packet captured with pcap
 pub fn extract_from_packet(packet: &Packet) -> BfiData {
     const MIMO_CTRL_HEADER_OFFSET: usize = 26;
     const BFA_HEADER_OFFSET: usize = 7;
@@ -42,20 +40,27 @@ pub fn extract_from_packet(packet: &Packet) -> BfiData {
     }
 }
 
-/**
- * Extract data from a pcap file
- *
- * \param file_path Path to file
- *
- */
-pub fn extract_from_file(file_path: PathBuf) -> Vec<BfiData> {
-    let mut capture = Capture::from_file(file_path).expect("Couldn't open pcap file");
+/// Extract all BFI data from a pcap file
+///
+/// # Parameters
+/// * `file_path` - Path to the pcap file
+pub fn extract_from_pcap(pcap_file: PathBuf) -> Vec<BfiData> {
+    log::trace!(
+        "Extracting BFI data from pcap file: {}",
+        pcap_file.display(),
+    );
+
+    let mut capture = Capture::from_file(pcap_file).expect("Couldn't open pcap file");
     let mut extracted_data = Vec::new();
 
     while let Ok(packet) = capture.next_packet() {
-        let bfi_data = extract_from_packet(&packet);
-        extracted_data.push(bfi_data);
+        let packet = extract_from_packet(&packet);
+        extracted_data.push(packet);
     }
 
+    log::trace!(
+        "Extracted {} BFI data points from pcap file.",
+        extracted_data.len()
+    );
     extracted_data
 }

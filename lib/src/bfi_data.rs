@@ -2,9 +2,7 @@
 
 use crate::he_mimo_ctrl::HeMimoControl;
 
-/**
- * Metadata extracted from packets
- */
+/// Metadata extracted from a single WiFi packet.
 #[derive(Debug, Clone)]
 pub struct BfiMetadata {
     pub bandwidth: u16,
@@ -15,6 +13,11 @@ pub struct BfiMetadata {
 }
 
 impl BfiMetadata {
+    /// Extract metadata from a HE Mimo Control packet header
+    ///
+    /// # Arguments
+    ///
+    /// * `header` - The he mimo control header
     pub fn from_mimo_ctrl_header(header: &HeMimoControl) -> Self {
         Self {
             bandwidth: header.bandwidth().to_mhz(),
@@ -26,9 +29,7 @@ impl BfiMetadata {
     }
 }
 
-/**
- * Data extracted from a single packet in the pcap
- */
+/// Data extracted from a single WiFi packet
 #[derive(Debug, Clone)]
 pub struct BfiData {
     #[cfg(feature = "bfi_metadata")]
@@ -38,9 +39,10 @@ pub struct BfiData {
     pub bfa_angles: Vec<Vec<u16>>,
 }
 
-/**
- * A batch of data
- */
+/// Batch type for the above data.
+///
+/// This is just a helper type mostly for the python binding, since it
+/// allows for simpler conversion to numpy arrays.
 #[derive(Debug, Clone)]
 pub struct BfiDataBatch {
     #[cfg(feature = "bfi_metadata")]
@@ -50,6 +52,7 @@ pub struct BfiDataBatch {
     pub bfa_angles: Vec<Vec<Vec<u16>>>,
 }
 
+/// Split a vector of BFI data into the BFI batch type
 pub fn split_bfi_data(input: Vec<BfiData>) -> BfiDataBatch {
     // Initialize vectors for each field
     #[cfg(feature = "bfi_metadata")]

@@ -1,41 +1,30 @@
 use beefi_lib::{
-    create_live_capture, create_offline_capture, split_bfi_data, BfiData, BfiMetadata, CaptureBee,
-    ProcessedSink,
+    create_live_capture, create_offline_capture, split_bfi_data, BfiData, BfiMetadata, HoneySink,
+    StreamBee,
 };
 use crossbeam_channel::{bounded, Receiver};
 use numpy::{PyArray1, PyArray2, PyArray3};
 use pyo3::{prelude::*, types::PyList};
 
-#[pyclass]
+#[pyclass(get_all)]
 pub struct PyBfiMeta {
-    #[pyo3(get)]
     pub bandwidth: u16,
-    #[pyo3(get)]
     pub nr_index: u8,
-    #[pyo3(get)]
     pub nc_index: u8,
-    #[pyo3(get)]
     pub codebook_info: u8,
-    #[pyo3(get)]
     pub feedback_type: u8,
 }
 
-#[pyclass]
+#[pyclass(get_all)]
 pub struct PyBfiData {
-    #[pyo3(get)]
     pub timestamp: f64,
-    #[pyo3(get)]
     pub token_number: u8,
-    #[pyo3(get)]
     pub bfa_angles: Py<PyArray2<u16>>, // No lifetimes, allows direct access from Python
 }
 
 #[pyclass]
-pub struct PyBfiDataBatch {}
-
-#[pyclass]
 pub struct Bee {
-    bee: CaptureBee,             // Internal CaptureBee instance
+    bee: StreamBee,              // Internal CaptureBee instance
     receiver: Receiver<BfiData>, // Receiver for BfiData messages from CaptureBee
 }
 
@@ -49,27 +38,27 @@ pub enum DataSource {
 #[pymethods]
 impl Bee {
     #[new]
-    pub fn new(source: DataSource, queue_size: usize) -> PyResult<Self> {
+    #[pyo3(signature = (source, queue_size=1000))]
+    pub fn new(source: DataSource, queue_size: Option<usize>) -> PyResult<Self> {
         // Set up the capture bee and queue
+        let queue_size = queue_size.unwrap_or(1000);
         let (sender, receiver) = bounded(queue_size);
 
         // Initialize CaptureBee based on the capture source
         let mut bee = match source {
             DataSource::File(file) => {
                 let cap = create_offline_capture(file.into());
-                CaptureBee::from_file_capture(cap)
+                StreamBee::from_file_capture(cap)
             }
             DataSource::Live(interface) => {
                 let cap = create_live_capture(&interface);
-                CaptureBee::from_live_capture(cap)
+                StreamBee::from_live_capture(cap)
             }
         };
 
-        // Attach the queue to CaptureBee to receive processed data
-        bee.set_proc_sink(ProcessedSink::Queue(sender));
-
-        // Start a background thread to run CaptureBee
-        bee.start(false);
+        // Attach the queue to CaptureBee to receive processed data and start receiving
+        bee.subscribe_for_honey(HoneySink::Queue(sender));
+        bee.start_harvesting(false);
 
         Ok(Bee { bee, receiver })
     }
@@ -98,8 +87,8 @@ impl Bee {
         }
     }
 
-    /// Stops the `Bee` capture process.
-    pub fn stop(&self) {
+    /// Stops the capture process
+    pub fn stop(&mut self) {
         self.bee.stop();
     }
 }
@@ -121,6 +110,7 @@ fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
      *          with length equal to the number of packets.
      */
     #[allow(dead_code)]
+    #[allow(clippy::type_complexity)] // Don't want to wrap and create owned struct
     #[pyfn(m)]
     fn extract_from_pcap<'py>(
         py: Python<'py>,
@@ -137,7 +127,9 @@ fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
         // Since we are facing different bandwidth causing number of subcarrier
         // to have different length we need to pad the extracted bfi data:
         let padded_bfa_angles = pad_bfa_angles(&data_batch.bfa_angles);
-        let py_objects: Vec<Py<PyBfiMeta>> = data_batch
+
+        // We put the metadata in a list instead of arrays, since its non-primitive.
+        let meta_list: Vec<Py<PyBfiMeta>> = data_batch
             .metadata
             .into_iter()
             .map(|metadata| Py::new(py, PyBfiMeta::from(metadata)))
@@ -148,20 +140,19 @@ fn beefi<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
             PyArray1::from_vec_bound(py, data_batch.timestamps),
             PyArray1::from_vec_bound(py, data_batch.token_numbers),
             PyArray3::from_vec3_bound(py, &padded_bfa_angles).unwrap(),
-            PyList::new_bound(py, py_objects),
+            PyList::new_bound(py, meta_list),
         )
     }
 
     m.add_class::<Bee>()?;
-    m.add_class::<PyBfiData>()?;
-    m.add_class::<PyBfiDataBatch>()?;
-    m.add_class::<PyBfiMeta>()?;
     m.add_class::<DataSource>()?;
+    m.add_class::<PyBfiData>()?;
+    m.add_class::<PyBfiMeta>()?;
 
     Ok(())
 }
 
-// Helper function to pad the bfi data according to the longest number of subcarrier
+/// Helper function to pad the bfi data according to the longest number of subcarrier
 fn pad_bfa_angles(bfa_angles: &[Vec<Vec<u16>>]) -> Vec<Vec<Vec<u16>>> {
     // Get the maximum length in both the second and third dimensions
     // (determining the number of subcarrier and number of angels respectively)
@@ -178,21 +169,26 @@ fn pad_bfa_angles(bfa_angles: &[Vec<Vec<u16>>]) -> Vec<Vec<Vec<u16>>> {
         .max()
         .unwrap_or(0);
 
-    // Pad the second dimension and inner vectors
+    // Create a zero-filled template for inner padding
+    let zero_padded_inner = vec![0; max_len_angles];
+
+    // Pad each outer vector
     bfa_angles
         .iter()
         .map(|outer| {
-            let mut padded_outer = Vec::with_capacity(max_len_subcarrier);
+            // Create a vector with padded inner vectors
+            let mut padded_outer: Vec<Vec<u16>> = outer
+                .iter()
+                .map(|inner| {
+                    // Create a new inner vector, padded if necessary
+                    let mut padded_inner = inner.clone();
+                    padded_inner.resize(max_len_angles, 0);
+                    padded_inner
+                })
+                .collect();
 
-            // Pad inner vectors to max_len_angles
-            for inner in outer {
-                let mut padded_inner = inner.clone();
-                padded_inner.resize(max_len_angles, 0);
-                padded_outer.push(padded_inner);
-            }
-
-            // Pad the outer vector to max_len_subcarrier with zero-filled vectors
-            padded_outer.resize_with(max_len_subcarrier, || vec![0; max_len_angles]);
+            // Add zero-filled vectors if needed to reach `max_len_subcarrier`
+            padded_outer.resize_with(max_len_subcarrier, || zero_padded_inner.clone());
 
             padded_outer
         })

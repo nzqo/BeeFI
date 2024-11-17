@@ -1,11 +1,10 @@
-/** ------------------------------------------------------------
- * HE Mimo Control Header extraction.
- * ------------------------------------------------------------- */
+//! High Efficiency (HE) MIMO Control header
+//!
+//! This module defines types and handles extraction of the HE MIMO Control
+//! header from the bytestream of a captured WiFi packet.
 use bilge::prelude::*;
 
-/**
- * Bandwidth enum corresponding to index order in HE MIMO Control field
- */
+/// Bandwidth enum corresponding to index in HE MIMO Control field
 #[bitsize(2)]
 #[derive(FromBits, Debug, Eq, PartialEq, Copy, Clone)]
 pub enum Bandwidth {
@@ -15,53 +14,49 @@ pub enum Bandwidth {
     Bw160,
 }
 
-/**
- * Bandwidth conversion functions
- */
+/// Bandwidth conversion functions
 impl Bandwidth {
+    /// Get bandwidth value in Megahertz
     pub fn to_mhz(self) -> u16 {
         // Left shift is equal to taking power of 2
         (2 << (self as u16)) * 10
     }
 
+    /// Get bandwidth value in Hertz
     pub fn to_hz(self) -> u32 {
         self.to_mhz() as u32 * 1_000_000
     }
 }
 
-/**
- * Full HE Mimo Control fields
- */
+/// HE Mimo Control header
 #[bitsize(40)]
 #[derive(FromBits, DebugBits)]
 pub struct HeMimoControl {
-    pub nc_index: u3,
-    pub nr_index: u3,
-    pub bandwidth: Bandwidth,
-    pub grouping: u1,
-    pub codebook_info: u1,
-    pub feedback_type: u2,
-    pub remaining_feedback_segments: u3,
-    pub first_feedback_segments: u1,
-    pub ru_start_index: u7,
-    pub ru_end_index: u7,
-    pub dialog_token_number: u6,
-    pub reserved_padding: u4,
+    pub nc_index: u3,                    // Index for number of "columns" (streams)
+    pub nr_index: u3,                    // Index for number of receive antennas
+    pub bandwidth: Bandwidth,            // channel bandwidth
+    pub grouping: u1,                    // Indicates subcarrier grouping (Ng=4 or 16)
+    pub codebook_info: u1,               // Codebook size (depends on grouping and feedback)
+    pub feedback_type: u2,               // Feedback type (0=Single User, 1= Multi User, 2= CQI)
+    pub remaining_feedback_segments: u3, // Indicate number of remaining feedback segments
+    pub first_feedback_segments: u1,     // Whether this is the first (or only) feedback segment
+    pub ru_start_index: u7,              // first RU26 for which beamformer requests feedback
+    pub ru_end_index: u7,                // Last RU26 for which beamformer requests feedback
+    pub dialog_token_number: u6,         // To identify VHT NDP announcement frame
+    pub reserved_padding: u4,            // Reserved padding
 }
 
-/**
- * Extract HeMimoControl from 5 bytes in buffer
- */
 impl HeMimoControl {
+    /// Extract HeMimoControl header from the packet bytestream (requires first 5 bytes.)
     pub fn from_buf(buf: &[u8]) -> Self {
-        let test: UInt<u64, 40> = UInt::<u64, 40>::new(
+        let value: UInt<u64, 40> = UInt::<u64, 40>::new(
             (buf[0] as u64)
                 | ((buf[1] as u64) << 8)
                 | ((buf[2] as u64) << 16)
                 | ((buf[3] as u64) << 24)
                 | ((buf[4] as u64) << 32),
         );
-        HeMimoControl::from(test)
+        HeMimoControl::from(value)
     }
 }
 

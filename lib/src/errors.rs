@@ -1,6 +1,4 @@
-/** ------------------------------------------------------------
- * Error types raised by this lib.
- * ------------------------------------------------------------- */
+//! Error types used by this lib.
 use thiserror::Error;
 
 #[allow(dead_code)]
@@ -14,6 +12,7 @@ pub enum BfaExtractionError {
 
 #[derive(Debug, Error)]
 pub enum PersistenceError {
+    #[cfg(feature = "parquet")]
     #[error("Error in writing parquet file: {0}")]
     Parquet(#[from] polars::error::PolarsError),
     #[error("IO error in file persistence: {0}")]
