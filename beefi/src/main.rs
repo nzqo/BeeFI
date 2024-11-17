@@ -145,6 +145,7 @@ fn run_offline(args: CaptureArgs) {
         };
         let mut writer = Writer::new(file).unwrap();
         writer.add_batch(&data).unwrap();
+        writer.finalize().unwrap();
     }
 }
 
