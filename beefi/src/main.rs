@@ -67,6 +67,9 @@ struct MonitorArgs {
 
     #[arg(long, default_value = "1")]
     channel: u8,
+
+    #[arg(long, default_value = "20")]
+    bandwidth: u16,
 }
 
 fn main() {
@@ -82,9 +85,11 @@ fn main() {
 
     match cli.command {
         Commands::Capture(args) => capture(args),
-        Commands::MonitorMode(MonitorArgs { interface, channel }) => {
-            monitor_mode::setup_monitor_mode(&interface, channel).unwrap()
-        }
+        Commands::MonitorMode(MonitorArgs {
+            interface,
+            channel,
+            bandwidth,
+        }) => monitor_mode::monitor_mode(&interface, channel, bandwidth).unwrap(),
     }
 }
 
@@ -129,6 +134,15 @@ fn run_capture(args: CaptureArgs) {
 
     // Start capturing
     bee.start_harvesting(print);
+
+    // Wait for CTRL+C
+    while running.load(Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // Cleanup if necessary
+    println!("Shutting down gracefully...");
+    bee.stop();
 }
 
 fn run_offline(args: CaptureArgs) {

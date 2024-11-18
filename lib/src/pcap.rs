@@ -53,9 +53,20 @@ pub fn extract_from_pcap(pcap_file: PathBuf) -> Vec<BfiData> {
     let mut capture = Capture::from_file(pcap_file).expect("Couldn't open pcap file");
     let mut extracted_data = Vec::new();
 
-    while let Ok(packet) = capture.next_packet() {
-        let packet = extract_from_packet(&packet);
-        extracted_data.push(packet);
+    loop {
+        match capture.next_packet() {
+            Ok(packet) => {
+                let packet = extract_from_packet(&packet);
+                extracted_data.push(packet);
+            }
+            Err(pcap::Error::TimeoutExpired) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => {
+                log::error!("Capture errored out (likely EOF): {}", e);
+                break;
+            }
+        }
     }
 
     log::trace!(

@@ -160,8 +160,6 @@ impl StreamBee {
         self.harvester = Some(thread::spawn(move || {
             harvest(cap, running, pollen_sink, honey_sink, print)
         }));
-
-        log::info!("Packet capture completed!\n");
     }
 
     /// Stops packet capture gracefully by setting `running` to `false`.
@@ -223,12 +221,18 @@ fn harvest(
         let packet = {
             match cap.next_packet() {
                 Ok(packet) => packet,
+                Err(pcap::Error::TimeoutExpired) => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
                 Err(e) => {
-                    log::error!("Pcap capture error encountered: {}. Stopping harvest.", e);
+                    log::trace!("Capture errored out (likely EOF): {}", e);
                     break;
                 }
             }
         };
+
+        log::info!("Got a packet: {:?}!", packet);
 
         if let Some(raw_sink) = &mut pollen_sink {
             match raw_sink {
@@ -264,6 +268,8 @@ fn harvest(
             }
         }
     }
+
+    log::info!("Packet capture completed!\n");
 }
 
 /// Writes captured packets to a file in batches, receiving data from a queue.
@@ -313,10 +319,21 @@ pub fn create_live_capture(interface: &str) -> Capture<Active> {
         .find(|d| d.name == interface)
         .expect("Failed to find the specified interface");
 
-    Capture::from_device(device)
-        .expect("Failed to create capture")
+    let mut cap = Capture::from_device(device)
+        .expect("Couldn't create PCAP capture")
+        .promisc(true)
+        .immediate_mode(true)
+        .snaplen(65535)
         .open()
-        .expect("Failed to open live capture")
+        .expect("Couldn't open PCAP capture")
+        .setnonblock()
+        .expect("Setting nonblock failed");
+
+    // Apply filter for ACK/NOACK management frames
+    let filter = "ether[0] == 0xe0";
+    cap.filter(filter, true).expect("Failed to apply filter!");
+
+    cap
 }
 
 /// Creates an offline capture to read packets from a pcap file.
