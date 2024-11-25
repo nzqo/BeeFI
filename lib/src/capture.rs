@@ -241,7 +241,18 @@ fn harvest(
         }
 
         if honey_sink.is_some() || print {
-            let data = extract_from_packet(&packet);
+            // Try to extract data from packet.
+            let data = match extract_from_packet(&packet) {
+                Ok(data) => data,
+                Err(e) => {
+                    log::error!(
+                        "Failed to extract BFI data from packet. Skipping. Error: {}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
             let metadata_info = {
                 #[cfg(feature = "bfi_metadata")]
                 {

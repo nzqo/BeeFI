@@ -1,5 +1,6 @@
 //! Some pcap handling helpers
 
+use crate::errors::BfaExtractionError;
 use crate::extraction::{extract_bfa, ExtractionConfig};
 use crate::he_mimo_ctrl::HeMimoControl;
 use crate::BfiData;
@@ -7,7 +8,7 @@ use pcap::{Capture, Packet};
 use std::path::PathBuf;
 
 /// Extract BFI data from a single WiFi packet captured with pcap
-pub fn extract_from_packet(packet: &Packet) -> BfiData {
+pub fn extract_from_packet(packet: &Packet) -> Result<BfiData, BfaExtractionError> {
     const MIMO_CTRL_HEADER_OFFSET: usize = 26;
     const BFA_HEADER_OFFSET: usize = 7;
     const FCS_LENGTH: usize = 4;
@@ -20,7 +21,7 @@ pub fn extract_from_packet(packet: &Packet) -> BfiData {
     let mimo_ctrl_start = header_length + MIMO_CTRL_HEADER_OFFSET;
 
     let mimo_control = HeMimoControl::from_buf(&packet[mimo_ctrl_start..]);
-    let extraction_config = ExtractionConfig::from_he_mimo_ctrl(&mimo_control);
+    let extraction_config = ExtractionConfig::from_he_mimo_ctrl(&mimo_control)?;
 
     // NOTE: BFA data starts after mimo_control (5 bytes) and SNR (2 bytes)
     // They last until before the last four bytes (Frame Check Sequence)
@@ -31,13 +32,13 @@ pub fn extract_from_packet(packet: &Packet) -> BfiData {
     let bfa_data = &packet[bfa_start..bfa_end];
     let bfa_angles = extract_bfa(bfa_data, extraction_config).expect("BFA extraction failed");
 
-    BfiData {
+    Ok(BfiData {
         #[cfg(feature = "bfi_metadata")]
         metadata: crate::BfiMetadata::from_mimo_ctrl_header(&mimo_control),
         timestamp: timestamp_secs,
         token_number: u8::from(mimo_control.dialog_token_number()),
         bfa_angles,
-    }
+    })
 }
 
 /// Extract all BFI data from a pcap file
@@ -55,10 +56,10 @@ pub fn extract_from_pcap(pcap_file: PathBuf) -> Vec<BfiData> {
 
     loop {
         match capture.next_packet() {
-            Ok(packet) => {
-                let packet = extract_from_packet(&packet);
-                extracted_data.push(packet);
-            }
+            Ok(packet) => match extract_from_packet(&packet) {
+                Ok(packet) => extracted_data.push(packet),
+                Err(e) => log::error!("Extraction from packet failed, dropping it. Error: {}", e),
+            },
             Err(pcap::Error::TimeoutExpired) => {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }

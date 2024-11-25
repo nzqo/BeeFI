@@ -8,6 +8,10 @@ pub enum BfaExtractionError {
     InsufficientBitsize { required: usize, available: usize },
     #[error("Bitsize {given} exceeds maximum handled bitsize of {allowed}")]
     InvalidBitfieldSize { given: u8, allowed: u8 },
+    #[error("Encountered invalid/unhandled antenna config: nr: {nr_index}, nc: {nc_index}")]
+    InvalidAntennaConfig { nr_index: u8, nc_index: u8 },
+    #[error("Encountered invalid feedback type: {fb}")]
+    InvalidFeedbackType { fb: u8 },
 }
 
 #[derive(Debug, Error)]

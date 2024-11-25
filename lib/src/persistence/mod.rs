@@ -83,7 +83,10 @@ impl std::str::FromStr for FileType {
         match s.to_lowercase().as_str() {
             #[cfg(feature = "parquet")]
             "parquet" => Ok(FileType::Parquet),
-            _ => Err(format!("Invalid file type: {}", s)),
+            _ => Err(format!(
+                "Invalid file type: {}. Maybe spelling or missing a feature?",
+                s
+            )),
         }
     }
 }
