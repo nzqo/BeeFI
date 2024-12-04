@@ -232,7 +232,7 @@ fn harvest(
             }
         };
 
-        log::info!("Got a packet: {:?}!", packet);
+        log::trace!("Got a packet! Header: {:?}!", packet.header);
 
         if let Some(raw_sink) = &mut pollen_sink {
             match raw_sink {
@@ -264,10 +264,13 @@ fn harvest(
                     "Disabled (see build flags)".to_string()
                 }
             };
-            println!(
-                "Captured data:\n - timestamp: {}\n - token number: {}\n{} - metadata {:?}",
-                data.timestamp, data.token_number, metadata_info, data.bfa_angles
-            );
+
+            if print {
+                println!(
+                    "Captured data:\n - timestamp: {}\n - token number: {}\n{} - metadata {:?}",
+                    data.timestamp, data.token_number, metadata_info, data.bfa_angles
+                );
+            }
 
             if let Some(sink) = &honey_sink {
                 if let Err(e) = sink.send(data) {
@@ -340,7 +343,7 @@ pub fn create_live_capture(interface: &str) -> Capture<Active> {
         .setnonblock()
         .expect("Setting nonblock failed");
 
-    // Apply filter for ACK/NOACK management frames
+    // Apply filter for ACK/NO ACK management frames
     let filter = "ether[0] == 0xe0";
     cap.filter(filter, true).expect("Failed to apply filter!");
 
