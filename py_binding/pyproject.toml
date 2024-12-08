@@ -1,0 +1,18 @@
+[project]
+name = "beefi"
+version = "0.1"
+description = "Python bindings for BeeFI"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Fabian Portner", email = "fportner@seemoo.de" }]
+
+dependencies = ["numpy"]
+
+[build-system]
+requires = ["maturin>=1.7", "setuptools", "wheel"]
+build-backend = "maturin"
+
+
+[tool.maturin]
+features = ["beefi_lib/bfi_metadata"]
+release = true

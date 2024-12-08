@@ -1,48 +1,169 @@
-# BfiExtract
+<div align="center">
+  <img src="assets/logo.png" alt="Project Logo" width="250">
 
-A small library to extract information out of the compressed beamforming
-feedback angles (BFAs) captured from channel sounding session.
+# BeeFI
+</div>
 
-This workspace contains:
+## Overview
 
-- `bfi_lib` The library implementing the core functionality
-- `bfi_cli` A mini application to perform extraction from the command line
-- `bfi_py_binding` A python binding to directly extract information into numpy arrays
+**BeeFI** is a tool for capturing and processing Beamforming Feedback Information (BFI)
+from WiFi communications, designed for users who need real-time or batched data extraction
+for analysis. BeeFI provides flexible capture options for both live and pcap-based data,
+with bindings for Python for seamless integration with data processing workflows.
 
-## Installing dependencies
+The extraction is built with efficiency in mind. BeeFI can process tens of thousand of
+packets per second easily.
 
-Install pcap (todo link page)
+This workspace includes:
 
-```bash
-pip install numpy maturin
-```
+- `lib` – The core library with BeeFI's primary capture and processing functions  
+- `beefi` – A command-line tool to perform BFI data extraction  
+- `py_binding` – A Python binding to import and extract information into numpy arrays  
 
-## Build & Run
+## Getting Started
 
-To build the CLI (which in turn builds the lib as dependency):
+### Prerequisites
 
-```bash
-cargo build --package bfi_cli
-cargo run --package bfi_cli 
-```
-
-## Python Binding
-
-To build the python binding, install maturin and use it to install
-the package in your virtual environment:
+Make sure `libpcap` is installed on your system, for example on debian-based systems:
 
 ```bash
-# Activate venv from whereever first, then:
-cd bfi_py_binding
-maturin develop
+sudo apt install libpcap-dev
 ```
 
-Afterwards, the python binding will be installed in the venv.
+### Features
+
+- **bfi_metadata**: Extract some metadata (e.g. bandwidth) together with the core data.
+  Enabled per default.
+- **parquet**: Support writing of extracted data to parquet files.
+  Enabled per default.
+
+### BeeFI CLI
+
+#### Building the CLI
+
+To build the CLI (which also builds the library as a dependency):
+
+```bash
+cargo build --package bfi_cli --release
+```
+
+Be aware that this takes a while, mainly because polars is a rather
+heavyweight library and compiler optimizations take their time.
+
+#### CLI Options
+
+BeeFI's CLI supports various operations:
+
+- **Capture frames directly to a pcap file**  
+- **Extract BFA angles from a pcap file**  
+- **Capture live data and directly process it to BFA angles**  
+
+For a list of all options and flags, use:
+
+```bash
+./target/release/beefi --help
+```
+
+The CLI can either print data to the command line or save it to a file.
+Currently, we only support the [parquet](https://parquet.apache.org/) file format.
+For working with parquet, we suggest [python polars](https://pola.rs/):
+
+```python
+import polars as pl
+df = pl.read_parquet("out.parquet")
+print(df)
+```
+
+#### Running Live Captures
+
+If you want to run BeeFI without `sudo`, grant the necessary permissions:
+
+```bash
+sudo setcap cap_net_admin,cap_net_raw=ep ./target/release/beefi
+```
+
+To capture, your NIC needs to be in monitor mode. You can either do that
+manually, or use the CLI (this requires sudo if you havent set permissions
+as above)
+
+```bash
+# see monitor-mode --help for more
+./target/release/beefi monitor-mode --interface <interface>
+```
+
+Afterwards, simply specify the interface. For example, to capture packets in a
+pcap file:
+
+```bash
+./target/release/beefi capture --interface wlp1s0 --pcap_out capture.pcap
+```
+
+### Python Binding
+
+#### Building the Python Binding
+
+To build the Python binding, create a virtual environment and install BeeFI:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+cd py_binding
+pip install .
+```
+
+#### Using the Python Binding
+
+After installation, import `beefi` in Python for data extraction.
+
+```python
+import beefi
+
+batch = beefi.extract_from_pcap("file.pcap")
+# see dir(batch) for extracted members
+```
+
+Live captures are also supported. Note however that the interface must
+be set into monitor mode before running this.
+
+```python
+import beefi
+
+source = beefi.DataSource.Live(interface="wlp1s0")
+bee = beefi.Bee(source)
+bee.start()
+
+while True: # Handle Ctrl+C in production code
+    if data := bee.poll():
+        print(f"data: {data}")
+    else:
+        time.sleep(0.01) # Sleep 10 ms to avoid busy-waiting
+
+bee.stop()
+```
+
+#### Permissions
+
+Again, since pcap requires raw socket options, you will either need to run
+your python script with sudo, give the interpreter the same capture permissions
+as aboe, or allow the pcap library in general to do raw captures.
+
+Virtual environments don't play nicely with being run with sudo. To do that,
+you might need:
+
+```bash
+# Script is your script using beefi
+sudo VIRTUAL_ENV="$VIRTUAL_ENV" PATH="$VIRTUAL_ENV/bin:$PATH" ./script.py
+```
 
 ## Testing
 
-To run some unit tests, just use cargo:
+To run unit tests for BeeFI, simply use:
 
 ```bash
 cargo test
+```
+
+You can run a simple test with the CLI as well:
+
+```bash
+./target/release/beefi --loglevel trace capture --pcap-in data/test_data/bfi.pcap --print
 ```

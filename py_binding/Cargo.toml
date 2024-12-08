@@ -1,0 +1,18 @@
+[package]
+name = "beefi_py"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
+crossbeam-channel = "0.5.13"
+
+[dependencies.beefi_lib]
+path = "../lib"
+default-features = false
+features = ["bfi_metadata"]
+
+[lib]
+name = "beefi"
+crate-type = ["cdylib"]
