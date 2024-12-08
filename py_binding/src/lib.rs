@@ -79,9 +79,18 @@ impl Bee {
     /// # Arguments
     /// * `source` - The pcap source to read packets from
     /// * `queue_size` - Size of internal queue to buffer collected data
+    /// * `pcap_buffer` - Whether to buffer pcap packets internally for batch processing
+    /// * `pcap_snaplen` - Snapshot length of pcap packets. Must exceed BFI packet length.
+    /// * `pcap_bufsize` - Size of internal pcap packet buffer.
     #[new]
-    #[pyo3(signature = (source, queue_size=1000))]
-    pub fn new(source: DataSource, queue_size: Option<usize>) -> PyResult<Self> {
+    #[pyo3(signature = (source, queue_size=1000, pcap_buffer=false, pcap_snaplen=4096, pcap_bufsize=1_000_000))]
+    pub fn new(
+        source: DataSource,
+        queue_size: Option<usize>,
+        pcap_buffer: Option<bool>,
+        pcap_snaplen: Option<i32>,
+        pcap_bufsize: Option<i32>,
+    ) -> PyResult<Self> {
         // Set up the capture bee and queue
         let queue_size = queue_size.unwrap_or(1000);
         let (sender, receiver) = bounded(queue_size);
@@ -93,7 +102,8 @@ impl Bee {
                 StreamBee::from_file_capture(cap)
             }
             DataSource::Live { interface } => {
-                let cap = create_live_capture(&interface);
+                let buffered = pcap_buffer.unwrap_or(false);
+                let cap = create_live_capture(&interface, buffered, pcap_snaplen, pcap_bufsize);
                 StreamBee::from_live_capture(cap)
             }
         };

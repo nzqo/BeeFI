@@ -24,7 +24,11 @@ This workspace includes:
 
 ### Prerequisites
 
-Make sure `libpcap` is installed on your system.
+Make sure `libpcap` is installed on your system, for example on debian-based systems:
+
+```bash
+sudo apt install libpcap-dev
+```
 
 ### Features
 
@@ -127,6 +131,20 @@ while True: # Handle Ctrl+C in production code
         time.sleep(0.01) # Sleep 10 ms to avoid busy-waiting
 
 bee.stop()
+```
+
+#### Permissions
+
+Again, since pcap requires raw socket options, you will either need to run
+your python script with sudo, give the interpreter the same capture permissions
+as aboe, or allow the pcap library in general to do raw captures.
+
+Virtual environments don't play nicely with being run with sudo. To do that,
+you might need:
+
+```bash
+# Script is your script using beefi
+sudo VIRTUAL_ENV="$VIRTUAL_ENV" PATH="$VIRTUAL_ENV/bin:$PATH" ./script.py
 ```
 
 ## Testing

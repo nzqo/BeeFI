@@ -3,7 +3,7 @@ import time
 
 source = beefi.DataSource.Live(interface="wlp1s0")
 bee = beefi.Bee(source)
-bee.start()
+print("Capture started in the background! Polling for data...")
 
 try:
     while True:

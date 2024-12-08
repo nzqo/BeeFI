@@ -322,7 +322,12 @@ fn write_packets_to_file(rx: Receiver<BfiData>, out_file: BfiFile) {
 ///
 /// # Parameters
 /// * `interface` - Network interface to capture packets on.
-pub fn create_live_capture(interface: &str) -> Capture<Active> {
+pub fn create_live_capture(
+    interface: &str,
+    buffered: bool,
+    snaplen: Option<i32>,
+    bufsize: Option<i32>,
+) -> Capture<Active> {
     log::info!("Creating live capture on interface: {}", interface);
     let devices = pcap::Device::list().unwrap_or_else(|e| {
         panic!("Error listing devices: {}", e);
@@ -333,17 +338,25 @@ pub fn create_live_capture(interface: &str) -> Capture<Active> {
         .find(|d| d.name == interface)
         .expect("Failed to find the specified interface");
 
+    let snaplen = snaplen.unwrap_or(4096);
+    let bufsize = bufsize.unwrap_or(1_000_000);
+    log::trace!(
+        "Device found, opening capture (Promiscuous, buffered: {buffered}, snaplen: {snaplen})"
+    );
+
     let mut cap = Capture::from_device(device)
         .expect("Couldn't create PCAP capture")
         .promisc(true)
-        .immediate_mode(true)
-        .snaplen(65535)
+        .immediate_mode(!buffered)
+        .snaplen(snaplen)
+        .buffer_size(bufsize)
         .open()
         .expect("Couldn't open PCAP capture")
         .setnonblock()
         .expect("Setting nonblock failed");
 
-    // Apply filter for ACK/NO ACK management frames
+    // Apply filter for ACK/NOACK management frames
+    log::trace!("Applying pcap filter to only receive ACK/NOACK management frames.");
     let filter = "ether[0] == 0xe0";
     cap.filter(filter, true).expect("Failed to apply filter!");
 

@@ -84,13 +84,22 @@ class Bee:
         stop: Stops the capture process.
     """
 
-    def __init__(self, source: Union[DataSource.Live, DataSource.File], queue_size: Optional[int] = 1000) -> None:
+    def __init__(self,
+            source: Union[DataSource.Live, DataSource.File],
+            queue_size: int = 1000,
+            pcap_buffer: bool = False,
+            pcap_snaplen: int =4096,
+            pcap_bufsize: int =1_000_000
+        ) -> None:
         """
         Initializes a new streaming Bee.
 
         Args:
             source (Union[DataSource.Live, DataSource.File]): The source of packets (live interface or pcap file).
-            queue_size (Optional[int]): Size of the internal queue to buffer collected data. Defaults to 1000.
+            queue_size (int): Size of the internal queue to buffer collected data. Defaults to 1000.
+            pcap_buffer (bool): Whether pcap should buffer packets before processing. Default is off (immediate processing).
+            pcap_snaplen (int): Internal pcap snapshot length (defaults to 4k=4096)
+            pcap_bufsize (int): Internal pcap buffer size to store snapshots (defaults to 1_000_000)
         """
         ...
 
