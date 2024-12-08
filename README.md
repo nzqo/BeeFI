@@ -76,12 +76,19 @@ print(df)
 
 #### Running Live Captures
 
-> **Note**: Ensure your NIC is set to monitor mode before capturing live data.
-
 If you want to run BeeFI without `sudo`, grant the necessary permissions:
 
 ```bash
 sudo setcap cap_net_admin,cap_net_raw=ep ./target/release/beefi
+```
+
+To capture, your NIC needs to be in monitor mode. You can either do that
+manually, or use the CLI (this requires sudo if you havent set permissions
+as above)
+
+```bash
+# see monitor-mode --help for more
+./target/release/beefi monitor-mode --interface <interface>
 ```
 
 Afterwards, simply specify the interface. For example, to capture packets in a
