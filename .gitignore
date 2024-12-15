@@ -186,3 +186,4 @@ cython_debug/
 *.pcap
 !/data/test_data/bfi.pcap
 *.parquet
+*.DS_Store
