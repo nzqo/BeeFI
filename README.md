@@ -44,7 +44,7 @@ sudo apt install libpcap-dev
 To build the CLI (which also builds the library as a dependency):
 
 ```bash
-cargo build --package bfi_cli --release
+cargo build --package beefi --release
 ```
 
 Be aware that this takes a while, mainly because polars is a rather
