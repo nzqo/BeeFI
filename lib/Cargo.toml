@@ -5,14 +5,19 @@ edition = "2021"
 
 [dependencies]
 pcap = "2.2"
-polars = { version = "0.43.1", features = ["parquet"], optional = true }
 thiserror = "1.0.63"
 bilge = "0.2.0"
 crossbeam-channel = "0.5.13"
 log = "0.4.22"
+ndarray = "0.16.1"
+num-complex = "0.4.6"
+
+parquet = { version = "54.2.1", optional = true }
+arrow = { version = "54.2.1", optional = true }
+
 
 [features]
 # This feature introduces some metadata in the extracted data
-default = ["bfi_metadata", "parquet"]
+default = ["bfi_metadata"]
 bfi_metadata = []
-parquet = ["dep:polars"]
+parquet = ["dep:parquet", "dep:arrow"]

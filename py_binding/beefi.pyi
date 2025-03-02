@@ -18,9 +18,39 @@ class PyBfiMeta:
     codebook_info: int
     feedback_type: int
 
-class PyBfiData:
+class PyBfmData:
     """
-    BFI data extracted from a single packet.
+    BFM data extracted from a single packet.
+
+    Attributes:
+        metadata (PyBfiMeta): Metadata associated with the BFI data.
+        timestamp (float): Timestamp of the associated pcap capture.
+        token_number (int): Token number identifying the NDP packet used in the procedure.
+        bfa_angles (ndarray): 2D array of extracted BFA angles from the compressed beamforming feedback information.
+    """
+    metadata: PyBfiMeta
+    timestamp: float
+    token_number: int
+    bfm: ndarray  # 3D array of shape (num_rx_antennas, num_spatial_streams, subcarriers)
+
+class PyBfmBatch:
+    """
+    BFM data extracted from a single packet.
+
+    Attributes:
+        metadata (PyBfiMeta): Metadata associated with the BFI data.
+        timestamp (float): Timestamp of the associated pcap capture.
+        token_number (int): Token number identifying the NDP packet used in the procedure.
+        bfa_angles (ndarray): 2D array of extracted BFA angles from the compressed beamforming feedback information.
+    """
+    metadata: List[PyBfiMeta]
+    timestamps: ndarray  # 1D array of shape (num_packets,)
+    token_numbers: ndarray  # 1D array of shape (num_packets,)
+    bfa_angles: ndarray  # 4D array of shape (num_packets, num_rx_antenna, num_spatial_streams, subcarriers)
+
+class PyBfaData:
+    """
+    BFI angle data extracted from a single packet.
 
     Attributes:
         metadata (PyBfiMeta): Metadata associated with the BFI data.
@@ -33,7 +63,7 @@ class PyBfiData:
     token_number: int
     bfa_angles: ndarray  # 2D array of shape (subcarriers, angles)
 
-class PyBfiBatch:
+class PyBfaBatch:
     """
     Batch of BFI data, extracted from multiple packets.
 
@@ -103,12 +133,12 @@ class Bee:
         """
         ...
 
-    def poll(self) -> Optional[PyBfiData]:
+    def poll(self) -> Optional[PyBfaData]:
         """
         Polls the queue for new BFI data. Non-blocking; returns None if no data is available.
 
         Returns:
-            Optional[PyBfiData]: BFI data if available, or None if the queue is empty.
+            Optional[PyBfaData]: BFI data if available, or None if the queue is empty.
         """
         ...
 
@@ -118,14 +148,37 @@ class Bee:
         """
         ...
 
-def extract_from_pcap(path: str) -> PyBfiBatch:
+def extract_from_pcap(path: str) -> PyBfaBatch:
     """
-    Extract all BFI data from a pcap file in a single batch. Pads BFA angles as needed.
+    Extract all BFA data from a pcap file in a single batch. Pads BFA angles as needed.
 
     Args:
         path (str): Path to the pcap file to extract data from.
 
     Returns:
-        PyBfiBatch: Batch of BFI data, including metadata, timestamps, token numbers, and padded BFA angles.
+        PyBfaBatch: Batch of BFA data, including metadata, timestamps, token numbers, and padded BFA angles.
     """
     ...
+
+def bfa_to_bfm(bfa: PyBfaData) -> PyBfmData:
+    """
+    Convert Beamforming Feedback Angles to Beamforming Feedback Matrices.
+
+    Args:
+        bfa (PyBfaData): Beamforming feedback angle struct.
+
+    Returns:
+        PyBfmData: Converted BFM struct.
+    """
+
+def bfa_to_bfm_batch(bfa_batch: PyBfaBatch) -> PyBfmBatch:
+    """
+    Convert Beamforming Feedback Angles to Beamforming Feedback Matrices
+    for a batch of data.
+
+    Args:
+        bfa (PyBfaBatch): Beamforming feedback angle batch
+
+    Returns:
+        PyBfmBatch: Converted BFM batch
+    """

@@ -3,12 +3,12 @@
 use crate::errors::BfaExtractionError;
 use crate::extraction::{extract_bfa, ExtractionConfig};
 use crate::he_mimo_ctrl::HeMimoControl;
-use crate::BfiData;
+use crate::BfaData;
 use pcap::{Capture, Packet};
 use std::path::PathBuf;
 
 /// Extract BFI data from a single WiFi packet captured with pcap
-pub fn extract_from_packet(packet: &Packet) -> Result<BfiData, BfaExtractionError> {
+pub fn extract_from_packet(packet: &Packet) -> Result<BfaData, BfaExtractionError> {
     const MIMO_CTRL_HEADER_OFFSET: usize = 26;
     const BFA_HEADER_OFFSET: usize = 7;
     const FCS_LENGTH: usize = 4;
@@ -32,7 +32,7 @@ pub fn extract_from_packet(packet: &Packet) -> Result<BfiData, BfaExtractionErro
     let bfa_data = &packet[bfa_start..bfa_end];
     let bfa_angles = extract_bfa(bfa_data, extraction_config).expect("BFA extraction failed");
 
-    Ok(BfiData {
+    Ok(BfaData {
         #[cfg(feature = "bfi_metadata")]
         metadata: crate::BfiMetadata::from_mimo_ctrl_header(&mimo_control),
         timestamp: timestamp_secs,
@@ -45,7 +45,7 @@ pub fn extract_from_packet(packet: &Packet) -> Result<BfiData, BfaExtractionErro
 ///
 /// # Parameters
 /// * `file_path` - Path to the pcap file
-pub fn extract_from_pcap(pcap_file: PathBuf) -> Vec<BfiData> {
+pub fn extract_from_pcap(pcap_file: PathBuf) -> Vec<BfaData> {
     log::trace!(
         "Extracting BFI data from pcap file: {}",
         pcap_file.display(),

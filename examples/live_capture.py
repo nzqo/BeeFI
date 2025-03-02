@@ -8,10 +8,11 @@ print("Capture started in the background! Polling for data...")
 try:
     while True:
         if data := bee.poll():
-            print(f"data: {data}")
+            bfm = beefi.bfa_to_bfm(data)
+            print(f"data: {bfm.bfm}")
         else:
-            # No data in the queue; Sleep 10 ms to avoid busy wait
-            time.sleep(0.01)
+            # No data in the queue; Sleep to avoid busy wait
+            time.sleep(0.1)
 except KeyboardInterrupt:
     print("Keyboard interrupt detected; Stopping capture.")
 finally:

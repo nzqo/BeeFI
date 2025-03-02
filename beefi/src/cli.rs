@@ -27,7 +27,7 @@ pub enum Commands {
 }
 
 #[derive(Parser)]
-#[command(group = ArgGroup::new("output").required(true).args(&["pcap_out", "bfi_out", "print"]))]
+#[command(group = ArgGroup::new("output").required(true).multiple(true).args(&["pcap_out", "bfa_out", "bfm_out", "print"]))]
 pub struct OnlineCaptureArgs {
     /// Network interface to capture from
     #[arg(long)]
@@ -37,9 +37,13 @@ pub struct OnlineCaptureArgs {
     #[arg(long)]
     pub pcap_out: Option<PathBuf>,
 
-    /// Output file for processed data
-    #[arg(short, long, requires("format"))]
-    pub bfi_out: Option<PathBuf>,
+    /// Output file for extracted angles
+    #[arg(short, long)]
+    pub bfa_out: Option<PathBuf>,
+
+    /// Output file for converted beamforming matrices
+    #[arg(long)]
+    pub bfm_out: Option<PathBuf>,
 
     /// Specify output format, e.g., 'parquet'
     #[arg(long, default_value = "parquet")]
@@ -62,15 +66,19 @@ pub struct OnlineCaptureArgs {
 }
 
 #[derive(Parser)]
-#[command(group = ArgGroup::new("output").required(true).args(&["bfi_out", "print"]))]
+#[command(group = ArgGroup::new("output").required(true).multiple(true).args(&["bfa_out", "bfm_out", "print"]))]
 pub struct OfflineCaptureArgs {
     /// Read data from existing pcap file
     #[arg(long)]
     pub pcap_in: PathBuf,
 
-    /// Output file for processed data
-    #[arg(short, long, requires("format"))]
-    pub bfi_out: Option<PathBuf>,
+    /// Output file for extracted feedback angles
+    #[arg(short, long)]
+    pub bfa_out: Option<PathBuf>,
+
+    /// Output file for extracted feedback matrices
+    #[arg(long)]
+    pub bfm_out: Option<PathBuf>,
 
     /// Specify output format, e.g., 'parquet'
     #[arg(long, default_value = "parquet")]

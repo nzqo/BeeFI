@@ -29,9 +29,9 @@ impl BfiMetadata {
     }
 }
 
-/// Data extracted from a single WiFi packet
+/// Beamforming Feedback Angle data extracted from a single packet.
 #[derive(Debug, Clone)]
-pub struct BfiData {
+pub struct BfaData {
     #[cfg(feature = "bfi_metadata")]
     pub metadata: BfiMetadata,
     pub timestamp: f64,
@@ -44,7 +44,7 @@ pub struct BfiData {
 /// This is just a helper type mostly for the python binding, since it
 /// allows for simpler conversion to numpy arrays.
 #[derive(Debug, Clone)]
-pub struct BfiDataBatch {
+pub struct BfaDataBatch {
     #[cfg(feature = "bfi_metadata")]
     pub metadata: Vec<BfiMetadata>,
     pub timestamps: Vec<f64>,
@@ -53,7 +53,7 @@ pub struct BfiDataBatch {
 }
 
 /// Split a vector of BFI data into the BFI batch type
-pub fn split_bfi_data(input: Vec<BfiData>) -> BfiDataBatch {
+pub fn split_bfi_data(input: Vec<BfaData>) -> BfaDataBatch {
     // Initialize vectors for each field
     #[cfg(feature = "bfi_metadata")]
     let mut metadata = Vec::with_capacity(input.len());
@@ -70,8 +70,8 @@ pub fn split_bfi_data(input: Vec<BfiData>) -> BfiDataBatch {
         bfa_angles.push(data.bfa_angles);
     }
 
-    // Return a BfiDataBatch with the collected data
-    BfiDataBatch {
+    // Return a BfaDataBatch with the collected data
+    BfaDataBatch {
         #[cfg(feature = "bfi_metadata")]
         metadata,
         timestamps,

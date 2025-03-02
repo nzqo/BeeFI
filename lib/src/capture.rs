@@ -14,8 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
+use crate::bfm_data::BfmData;
 use crate::pcap::extract_from_packet;
-use crate::{BfiData, BfiFile, Writer};
+use crate::persistence::FileContentType;
+use crate::{to_bfm, BfaData, BfiFile, Writer};
 
 /// Size of batches to write.
 ///
@@ -30,10 +32,12 @@ const BATCH_SIZE: usize = 1000;
 pub struct StreamBee {
     cap: Option<CaptureWrapper>,
     pollen_sink: Option<PollenSink>,
-    honey_sink: Option<Sender<BfiData>>,
+    nectar_sink: Option<Sender<BfaData>>,
+    honey_sink: Option<Sender<BfmData>>,
     running: Arc<AtomicBool>,
     harvester: Option<JoinHandle<()>>,
-    file_writer: Option<JoinHandle<()>>,
+    bfa_file_writer: Option<JoinHandle<()>>,
+    bfm_file_writer: Option<JoinHandle<()>>,
 }
 
 /// Wrapper enum for pcap `Capture` types to avoid generics in StreamBee.
@@ -52,10 +56,16 @@ impl CaptureWrapper {
     }
 }
 
-/// A sink to receive honey, i.e. processed BFI data
+/// A sink to receive Nectar, i.e. harvested Beamforming Feedback Angles
+pub enum NectarSink {
+    File(BfiFile),
+    Queue(Sender<BfaData>),
+}
+
+/// A sink to receive Honey, i.e. processed Beamforming Feedback Matrices
 pub enum HoneySink {
     File(BfiFile),
-    Queue(Sender<BfiData>),
+    Queue(Sender<BfmData>),
 }
 
 /// A sink to receive pollen, i.e. raw data.
@@ -83,20 +93,22 @@ impl StreamBee {
         Self {
             cap: Some(cap),
             pollen_sink: None,
+            nectar_sink: None,
             honey_sink: None,
             running: Arc::new(AtomicBool::new(false)),
             harvester: None,
-            file_writer: None,
+            bfa_file_writer: None,
+            bfm_file_writer: None,
         }
     }
 
     /// Registers a sink for packet processing, supporting multiple output options.
     ///
-    /// - `HoneySink::File`: Captured packets are extracted, batched, and saved to a specified file.
-    /// - `HoneySink::Queue`: Packets are extracted and sent to an in-process queue for real-time handling.
+    /// - `NectarSink::File`: Extracted BFM are batched, and saved to a specified file.
+    /// - `NectarSink::Queue`: Extracted BFM sent to an in-process queue for real-time handling.
     ///
     /// # Parameters
-    /// - `sink`: The sink to stream the processed BFI data to.
+    /// - `sink`: The sink to stream the extracted BFM data to
     pub fn subscribe_for_honey(&mut self, sink: HoneySink) {
         if self.honey_sink.is_some() {
             panic!("Cant set two processed data sinks (currently)");
@@ -107,18 +119,52 @@ impl StreamBee {
                 let (tx, rx) = bounded(100);
 
                 // Spawn a thread to handle file writing from the channel
-                let file = file.clone();
+                let mut file = file.clone();
+                file.file_content_type = FileContentType::Bfm;
                 log::trace!(
                     "Spawning background thread to write processed data to file {:?}",
                     file
                 );
-                self.file_writer = Some(thread::spawn(|| write_packets_to_file(rx, file)));
+                self.bfm_file_writer = Some(thread::spawn(|| write_bfm_packets_to_file(rx, file)));
                 tx
             }
             HoneySink::Queue(queue) => queue,
         };
 
         self.honey_sink = Some(sink);
+    }
+
+    /// Registers a sink for packet processing, supporting multiple output options.
+    ///
+    /// - `NectarSink::File`: Captured packets are extracted, batched, and saved to a specified file.
+    /// - `NectarSink::Queue`: Packets are extracted and sent to an in-process queue for real-time handling.
+    ///
+    /// # Parameters
+    /// - `sink`: The sink to stream the processed BFI data to.
+    pub fn subscribe_for_nectar(&mut self, sink: NectarSink) {
+        if self.nectar_sink.is_some() {
+            panic!("Cant set two processed data sinks (currently)");
+        }
+
+        let sink = match sink {
+            NectarSink::File(file) => {
+                let (tx, rx) = bounded(100);
+
+                // Spawn a thread to handle file writing from the channel
+                let mut file = file.clone();
+                file.file_content_type = FileContentType::Bfa;
+
+                log::trace!(
+                    "Spawning background thread to write processed data to file {:?}",
+                    file
+                );
+                self.bfa_file_writer = Some(thread::spawn(|| write_bfa_packets_to_file(rx, file)));
+                tx
+            }
+            NectarSink::Queue(queue) => queue,
+        };
+
+        self.nectar_sink = Some(sink);
     }
 
     /// Registers a sink for pollen (raw packets)
@@ -139,7 +185,7 @@ impl StreamBee {
     /// Reads packets from the registered interface, then:
     ///
     /// 1. If a `PollenSink` is registered, first forwards the raw packets
-    /// 2. If a `HoneySink` is registered, extracts BFI data and forwards it.
+    /// 2. If a `NectarSink` is registered, extracts BFI data and forwards it.
     ///
     /// Captures packets continuously until:
     /// - The capture ends (for offline captures),
@@ -156,9 +202,10 @@ impl StreamBee {
         let cap = self.cap.take().expect("Capture must exist for harvesting");
         let running = self.running.clone();
         let pollen_sink = self.pollen_sink.take();
+        let nectar_sink = self.nectar_sink.take();
         let honey_sink = self.honey_sink.take();
         self.harvester = Some(thread::spawn(move || {
-            harvest(cap, running, pollen_sink, honey_sink, print)
+            harvest(cap, running, pollen_sink, nectar_sink, honey_sink, print)
         }));
     }
 
@@ -179,7 +226,7 @@ impl StreamBee {
             }
         }
 
-        if let Some(file_writer) = self.file_writer.take() {
+        if let Some(file_writer) = self.bfa_file_writer.take() {
             if let Err(e) = file_writer.join() {
                 log::error!("Couldn't join file writer thread. Error: {:?}", e);
             }
@@ -192,7 +239,7 @@ impl StreamBee {
         }
 
         // Ensure the queues are destroyed so the file writer's are notified.
-        self.honey_sink = None;
+        self.nectar_sink = None;
         self.pollen_sink = None;
         self.harvester = None
     }
@@ -207,13 +254,15 @@ impl StreamBee {
 /// * `cap` - Capture to read packets from
 /// * `running` - A shared flag to signalize harvesting to stop
 /// * `pollen_sink` - Optional sink for raw packets
-/// * `honey_sink` - Optional sink for extracted BFI data
+/// * `nectar_sink` - Optional sink for extracted BFA
+/// * `honey_sink` - Optional sink for extracted BFM
 /// * `print` - Flag whether to print extracted BFI data to `stdout`.
 fn harvest(
     mut cap: CaptureWrapper,
     running: Arc<AtomicBool>,
     mut pollen_sink: Option<PollenSink>,
-    honey_sink: Option<Sender<BfiData>>,
+    nectar_sink: Option<Sender<BfaData>>,
+    honey_sink: Option<Sender<BfmData>>,
     print: bool,
 ) {
     while running.load(Ordering::SeqCst) {
@@ -240,7 +289,7 @@ fn harvest(
             }
         }
 
-        if honey_sink.is_some() || print {
+        if honey_sink.is_some() || nectar_sink.is_some() || print {
             // Try to extract data from packet.
             let data = match extract_from_packet(&packet) {
                 Ok(data) => data,
@@ -272,12 +321,32 @@ fn harvest(
                 );
             }
 
+            // Want honey? Lets process some.
             if let Some(sink) = &honey_sink {
-                if let Err(e) = sink.send(data) {
-                    log::error!(
-                        "Failed to forward data to sink; Stopping collection. Error: {}",
-                        e
-                    );
+                match to_bfm(&data) {
+                    Err(e) => log::error!("Failed to convert to BFM: {}", e),
+                    Ok(bfm) => match sink.try_send(bfm) {
+                        Ok(_) => {}
+                        Err(crossbeam_channel::TrySendError::Full(_)) => {
+                            log::warn!("Honey sink channel full; dropping BFM data. Increase queue size or process more frequently.")
+                        }
+                        Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                            log::error!("Honey sink channel disconnected")
+                        }
+                    },
+                }
+            }
+
+            // Just nectar? sure, also fine.
+            if let Some(sink) = &nectar_sink {
+                match sink.try_send(data) {
+                    Ok(_) => {}
+                    Err(crossbeam_channel::TrySendError::Full(_)) => {
+                        log::warn!("Nectar sink channel full; dropping BFA data. Increase queue size or process more frequently.")
+                    }
+                    Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                        log::error!("Nectar sink channel disconnected")
+                    }
                 }
             }
         }
@@ -286,12 +355,12 @@ fn harvest(
     log::info!("Packet capture completed!\n");
 }
 
-/// Writes captured packets to a file in batches, receiving data from a queue.
+/// Writes captured BFA (angles) to a file in batches, receiving data from a queue.
 ///
 /// # Parameters
-/// - `rx`: Receiver channel that receives `BfiData` packets to write.
+/// - `rx`: Receiver channel that receives `BfaData` packets to write.
 /// - `out_file`: The file to which packets are saved in batches.
-fn write_packets_to_file(rx: Receiver<BfiData>, out_file: BfiFile) {
+fn write_bfa_packets_to_file(rx: Receiver<BfaData>, out_file: BfiFile) {
     let mut packet_buffer = Vec::new();
     let mut writer = Writer::new(out_file).expect("Couldn't create a file writer!");
 
@@ -301,7 +370,7 @@ fn write_packets_to_file(rx: Receiver<BfiData>, out_file: BfiFile) {
             continue;
         }
 
-        if let Err(e) = writer.add_batch(&packet_buffer) {
+        if let Err(e) = writer.add_bfa_batch(&packet_buffer) {
             log::error!("Error encountered on batch writing: {}. Exiting writer.", e);
             return;
         }
@@ -313,7 +382,39 @@ fn write_packets_to_file(rx: Receiver<BfiData>, out_file: BfiFile) {
     }
 
     // Write any remaining packets when the channel is closed
-    if let Err(e) = writer.add_batch(&packet_buffer) {
+    if let Err(e) = writer.add_bfa_batch(&packet_buffer) {
+        log::error!("Error encountered on batch writing: {}. Exiting writer.", e);
+    }
+}
+
+/// Writes captured BFM (matrices) to a file in batches, receiving data from a queue.
+///
+/// # Parameters
+/// - `rx`: Receiver channel that receives `BfmData` packets to write.
+/// - `out_file`: The file to which packets are saved in batches.
+fn write_bfm_packets_to_file(rx: Receiver<BfmData>, out_file: BfiFile) {
+    let mut packet_buffer = Vec::new();
+    let mut writer = Writer::new(out_file).expect("Couldn't create a file writer!");
+
+    while let Ok(bfi_data) = rx.recv() {
+        packet_buffer.push(bfi_data);
+        if packet_buffer.len() <= BATCH_SIZE {
+            continue;
+        }
+
+        if let Err(e) = writer.add_bfm_batch(&packet_buffer) {
+            log::error!("Error encountered on batch writing: {}. Exiting writer.", e);
+            return;
+        }
+        packet_buffer.clear();
+    }
+
+    if packet_buffer.is_empty() {
+        return;
+    }
+
+    // Write any remaining packets when the channel is closed
+    if let Err(e) = writer.add_bfm_batch(&packet_buffer) {
         log::error!("Error encountered on batch writing: {}. Exiting writer.", e);
     }
 }

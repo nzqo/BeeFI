@@ -1,5 +1,6 @@
 use beefi_lib::{
-    create_live_capture, extract_from_pcap, BfiFile, HoneySink, PollenSink, StreamBee, Writer,
+    create_live_capture, extract_from_pcap, to_bfm, BfiFile, BfmData, FileContentType, HoneySink,
+    NectarSink, PollenSink, StreamBee, Writer,
 };
 
 use std::path::PathBuf;
@@ -14,7 +15,8 @@ pub fn run_online_capture(args: OnlineCaptureArgs) {
     let OnlineCaptureArgs {
         interface,
         pcap_out,
-        bfi_out,
+        bfa_out,
+        bfm_out,
         format,
         print,
         pcap_snaplen,
@@ -42,10 +44,20 @@ pub fn run_online_capture(args: OnlineCaptureArgs) {
         pcap_bufsize,
     );
 
-    if let Some(bfi_out_path) = bfi_out {
-        let processed_sink = HoneySink::File(BfiFile {
-            file_path: bfi_out_path,
+    if let Some(bfa_out_path) = bfa_out {
+        let processed_sink = NectarSink::File(BfiFile {
+            file_path: bfa_out_path,
             file_type: format,
+            file_content_type: FileContentType::Bfa,
+        });
+        bee.subscribe_for_nectar(processed_sink);
+    }
+
+    if let Some(bfm_out_path) = bfm_out {
+        let processed_sink = HoneySink::File(BfiFile {
+            file_path: bfm_out_path,
+            file_type: format,
+            file_content_type: FileContentType::Bfm,
         });
         bee.subscribe_for_honey(processed_sink);
     }
@@ -70,13 +82,30 @@ pub fn run_offline_capture(args: OfflineCaptureArgs) {
         println!("Data read: {:?}", data);
     }
 
-    if let Some(file) = args.bfi_out {
+    if let Some(file) = args.bfa_out {
         let file = BfiFile {
             file_path: file,
             file_type: args.format,
+            file_content_type: FileContentType::Bfa,
         };
         let mut writer = Writer::new(file).unwrap();
-        writer.add_batch(&data).unwrap();
+        writer.add_bfa_batch(&data).unwrap();
+        writer.finalize().unwrap();
+    }
+
+    if let Some(file) = args.bfm_out {
+        let file = BfiFile {
+            file_path: file,
+            file_type: args.format,
+            file_content_type: FileContentType::Bfm,
+        };
+        let mut writer = Writer::new(file).unwrap();
+        let bfm: Vec<BfmData> = data
+            .iter()
+            .map(|bfa| to_bfm(bfa).expect("conversion to BFM failed"))
+            .collect();
+
+        writer.add_bfm_batch(&bfm).unwrap();
         writer.finalize().unwrap();
     }
 }

@@ -16,7 +16,7 @@ pub struct ExtractionConfig {
 }
 
 /// Compressed Feedback contains two types of angles
-enum Angles {
+pub enum Angles {
     Phi,
     Psi,
 }
@@ -27,33 +27,64 @@ use Angles::{Phi, Psi};
 ///
 /// Phi and Psi are encoded in a variable number of bits, depending on the
 /// HE MIMO Control configuration. This struct contains these bit sizes.
-struct CompressedAngleBitSizes {
-    phi_bit: u8,
-    psi_bit: u8,
+pub struct CompressedAngleBitSizes {
+    pub phi_bit: u8,
+    pub psi_bit: u8,
 }
 
-/// Possible patterns of Phi and Psi angles
+/// Hardcoded angle patterns to retrieve for a few different combinations of number
+/// of receive antennas and spatial streams.
+/// 
+/// Every pattern captures the order and association to nr/nc number (the subscripts
+/// of the angles) in the order in which they appear in the Beamforming Feedback
+/// Information.
 /// 
 /// For different configurations, the exact parametrization differs, requiring
 /// different numbers of Phi and Psi angles. This array lists all the patterns
 /// of Phi/Psi that may occur.
+/// 
+/// TODO: Cite standard page
 #[rustfmt::skip]
-const ANGLE_PATTERNS: &[&[Angles]] = &[                            // (nr_index, nc_index):
-    &[Phi, Psi],                                                   // (1, 0) | (1, 2)
-    &[Phi, Phi, Psi, Psi],                                         // (2, 0)
-    &[Phi, Phi, Psi, Psi, Phi, Psi],                               // (2, 1) | (2, 2)
-    &[Phi, Phi, Phi, Psi, Psi, Psi],                               // (3, 0)
-    &[Phi, Phi, Phi, Psi, Psi, Psi, Phi, Phi, Psi, Psi],           // (3, 1)
-    &[Phi, Phi, Phi, Psi, Psi, Psi, Phi, Phi, Psi, Psi, Phi, Psi]  // (3, 2) | (3, 3)
+const ANGLE_PATTERNS: &[&[(Angles, usize, usize)]] = &[                                                                                          // (nr_index, nc_index):
+    &[(Phi,1,1), (Psi,2,1)],                                                                                                               // (1, 0) | (1, 2)
+    &[(Phi,1,1), (Phi,2,1), (Psi,2,1), (Psi,3,1)],                                                                                         // (2, 0)
+    &[(Phi,1,1), (Phi,2,1), (Psi,2,1), (Psi,3,1), (Phi,2,2), (Psi,3,2)],                                                                   // (2, 1) | (2, 2)
+    &[(Phi,1,1), (Phi,2,1), (Phi,3,1), (Psi,2,1), (Psi,3,1), (Psi,4,1)],                                                                   // (3, 0)
+    &[(Phi,1,1), (Phi,2,1), (Phi,3,1), (Psi,2,1), (Psi,3,1), (Psi,4,1), (Phi,2,2), (Phi,3,2), (Psi,3,2), (Psi,4,2)],                       // (3, 1)
+    &[(Phi,1,1), (Phi,2,1), (Phi,3,1), (Psi,2,1), (Psi,3,1), (Psi,4,1), (Phi,2,2), (Phi,3,2), (Psi,3,2), (Psi,4,2), (Phi,3,3), (Psi,4,3)]  // (3, 2) | (3, 3)
 ];
 
+pub fn get_angle_bit_sizes(
+    codebook_info: u8,
+    feedback_type: u8,
+) -> Result<CompressedAngleBitSizes, BfaExtractionError> {
+    #[rustfmt::skip]
+    let bitsizes = match (
+        codebook_info,
+        feedback_type,
+    ) {
+        (0, 0) => CompressedAngleBitSizes { phi_bit: 4, psi_bit: 2 },
+        (0, 1) => CompressedAngleBitSizes { phi_bit: 7, psi_bit: 5 },
+        (1, 0) => CompressedAngleBitSizes { phi_bit: 6, psi_bit: 4 },
+        (1, 1) => CompressedAngleBitSizes { phi_bit: 9, psi_bit: 7 },
+        _ => {
+            // NOTE: codebook info is only a single bit so its values are covered.
+            return Err(BfaExtractionError::InvalidFeedbackType { fb: feedback_type });
+        },
+    };
+
+    Ok(bitsizes)
+}
 impl ExtractionConfig {
     /// Find the Phi/Psi angle pattern from a configuration.
     ///
     /// # Parameters
     /// * `nr_index` - Index for number of receive chains
     /// * `nc_index` - Index for number of columns (spatial streams)
-    fn get_pattern(nr_index: u8, nc_index: u8) -> Result<&'static [Angles], BfaExtractionError> {
+    pub fn get_pattern(
+        nr_index: u8,
+        nc_index: u8,
+    ) -> Result<&'static [(Angles, usize, usize)], BfaExtractionError> {
         match (nr_index, nc_index) {
             (1, 0) | (1, 2) => Ok(ANGLE_PATTERNS[0]),
             (2, 0) => Ok(ANGLE_PATTERNS[1]),
@@ -73,26 +104,16 @@ impl ExtractionConfig {
     /// * `mimo_ctrl` - The MIMO control header
     pub fn from_he_mimo_ctrl(mimo_ctrl: &HeMimoControl) -> Result<Self, BfaExtractionError> {
         #[rustfmt::skip]
-        let phi_psi = match (
-            mimo_ctrl.codebook_info().value(),
-            mimo_ctrl.feedback_type().value(),
-        ) {
-            (0, 0) => CompressedAngleBitSizes { phi_bit: 4, psi_bit: 2 },
-            (0, 1) => CompressedAngleBitSizes { phi_bit: 7, psi_bit: 5 },
-            (1, 0) => CompressedAngleBitSizes { phi_bit: 6, psi_bit: 4 },
-            (1, 1) => CompressedAngleBitSizes { phi_bit: 9, psi_bit: 7 },
-            _ => {
-                // NOTE: codebook info is only a single bit so its values are covered.
-                return Err(BfaExtractionError::InvalidFeedbackType { fb: mimo_ctrl.feedback_type().value() });
-            },
-        };
+        let phi_psi = get_angle_bit_sizes(mimo_ctrl.codebook_info().value(),
+        mimo_ctrl.feedback_type().value())?;
 
         let nr_index = mimo_ctrl.nr_index().value();
         let nc_index = mimo_ctrl.nc_index().value();
 
         let bitfield_pattern: Vec<u8> = Self::get_pattern(nr_index, nc_index)?
             .iter()
-            .map(|pattern| match pattern {
+            // First tuple element is the angle type
+            .map(|pattern| match pattern.0 {
                 Angles::Phi => phi_psi.phi_bit,
                 Angles::Psi => phi_psi.psi_bit,
             })
@@ -173,6 +194,9 @@ fn sanity_check_extraction(
 /// * `byte_stream` - The bytestream (packet payload containing compressed BFI)
 /// * `bitfield_pattern` - The Phi/Psi angle pattern present
 /// * `num_chunks` - Number of BFI chunks (i.e. number of subcarriers)
+///
+/// # Returns
+/// * Array of angles of dimension (num_subcarrier, num_angles)
 fn extract_bitfields(
     byte_stream: &[u8],
     bitfield_pattern: Vec<u8>,
@@ -451,5 +475,19 @@ mod tests {
                 available: 16
             })
         ));
+    }
+
+    /// Test for `get_pattern`:
+    ///
+    /// Validates that `get_pattern` returns the correct angle pattern for known valid inputs
+    /// and produces an error for invalid antenna configurations.
+    #[test]
+    fn test_get_pattern() {
+        // Valid case: (nr_index, nc_index) = (1, 0) should return a pattern of length 2.
+        assert_eq!(ExtractionConfig::get_pattern(1, 0).unwrap().len(), 2);
+        // Valid case: (nr_index, nc_index) = (3, 3) should return a pattern of length 12.
+        assert_eq!(ExtractionConfig::get_pattern(3, 3).unwrap().len(), 12);
+        // Invalid case: (nr_index, nc_index) = (0, 0) should yield an error.
+        assert!(ExtractionConfig::get_pattern(0, 0).is_err());
     }
 }
