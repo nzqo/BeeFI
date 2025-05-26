@@ -1,6 +1,7 @@
 """
 Example on how to read BFA from file and convert to BFM.
 """
+
 import beefi
 
 bfa_batch = beefi.extract_from_pcap("bfi_capture.pcap")

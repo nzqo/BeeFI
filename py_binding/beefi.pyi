@@ -1,4 +1,5 @@
-from typing import Optional, List, Union
+from typing import List, Optional, Union
+
 from numpy import ndarray
 
 class PyBfiMeta:
@@ -12,6 +13,7 @@ class PyBfiMeta:
         codebook_info (int): Codebook size.
         feedback_type (int): Feedback type (e.g., SU, MU, CQI).
     """
+
     bandwidth: int
     nr_index: int
     nc_index: int
@@ -28,10 +30,13 @@ class PyBfmData:
         token_number (int): Token number identifying the NDP packet used in the procedure.
         bfa_angles (ndarray): 2D array of extracted BFA angles from the compressed beamforming feedback information.
     """
+
     metadata: PyBfiMeta
     timestamp: float
     token_number: int
-    bfm: ndarray  # 3D array of shape (num_rx_antennas, num_spatial_streams, subcarriers)
+    bfm: (
+        ndarray  # 3D array of shape (num_rx_antennas, num_spatial_streams, subcarriers)
+    )
 
 class PyBfmBatch:
     """
@@ -43,6 +48,7 @@ class PyBfmBatch:
         token_number (int): Token number identifying the NDP packet used in the procedure.
         bfa_angles (ndarray): 2D array of extracted BFA angles from the compressed beamforming feedback information.
     """
+
     metadata: List[PyBfiMeta]
     timestamps: ndarray  # 1D array of shape (num_packets,)
     token_numbers: ndarray  # 1D array of shape (num_packets,)
@@ -58,6 +64,7 @@ class PyBfaData:
         token_number (int): Token number identifying the NDP packet used in the procedure.
         bfa_angles (ndarray): 2D array of extracted BFA angles from the compressed beamforming feedback information.
     """
+
     metadata: PyBfiMeta
     timestamp: float
     token_number: int
@@ -73,6 +80,7 @@ class PyBfaBatch:
         token_numbers (ndarray): 1D array of token numbers of shape (num_packets,).
         bfa_angles (ndarray): 3D array of BFA angles with shape (num_packets, subcarriers, angles).
     """
+
     metadata: List[PyBfiMeta]
     timestamps: ndarray  # 1D array of shape (num_packets,)
     token_numbers: ndarray  # 1D array of shape (num_packets,)
@@ -93,6 +101,7 @@ class DataSource:
         Attributes:
             interface (str): Name of the network interface to capture packets on.
         """
+
         interface: str
 
     class File:
@@ -102,25 +111,27 @@ class DataSource:
         Attributes:
             file_path (str): Path to the pcap file on disk.
         """
+
         file_path: str
 
 class Bee:
     """
     Capture bee for reading and processing packets in a streaming fashion.
-    
+
     Methods:
         __init__: Initialize a streaming bee for packet capture.
         poll: Polls for new BFI data, returning it if available.
         stop: Stops the capture process.
     """
 
-    def __init__(self,
-            source: Union[DataSource.Live, DataSource.File],
-            queue_size: int = 1000,
-            pcap_buffer: bool = False,
-            pcap_snaplen: int =4096,
-            pcap_bufsize: int =1_000_000
-        ) -> None:
+    def __init__(
+        self,
+        source: Union[DataSource.Live, DataSource.File],
+        queue_size: int = 1000,
+        pcap_buffer: bool = False,
+        pcap_snaplen: int = 4096,
+        pcap_bufsize: int = 1_000_000,
+    ) -> None:
         """
         Initializes a new streaming Bee.
 

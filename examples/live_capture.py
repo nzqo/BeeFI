@@ -1,5 +1,6 @@
-import beefi
 import time
+
+import beefi
 
 source = beefi.DataSource.Live(interface="wlp1s0")
 bee = beefi.Bee(source)
@@ -17,4 +18,3 @@ except KeyboardInterrupt:
     print("Keyboard interrupt detected; Stopping capture.")
 finally:
     bee.stop()
-
